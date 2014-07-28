@@ -197,54 +197,55 @@ def getExternals(revnum):
                     #print "currentParentDir:", currentParentDir
                     tokens = tokens[2:]
 
-                # Parse extern line
-                childObject = None
-                externUrl = None
-                externRev = None
-                externPegrev = None
-                while len(tokens):
-                    token = tokens.pop(0)
-                    if re.search(r'^.+://', token): # URL
-                        match = re.search(r'^(.+)@(.+)', token)
+                if len(tokens) > 0: # sometimes we get a deleted extern that leaves this behind
+                    # Parse extern line
+                    childObject = None
+                    externUrl = None
+                    externRev = None
+                    externPegrev = None
+                    while len(tokens):
+                        token = tokens.pop(0)
+                        if re.search(r'^.+://', token): # URL
+                            match = re.search(r'^(.+)@(.+)', token)
+                            if match:
+                                externUrl = match.groups()[0]
+                                externPegrev = int(match.groups()[1])
+                            else:
+                                externUrl = token
+                            continue
+
+                        match = re.search(r'^-r(.+)', token) # -rREVNUM
                         if match:
-                            externUrl = match.groups()[0]
-                            externPegrev = int(match.groups()[1])
-                        else:
-                            externUrl = token
-                        continue
+                            externRev = int(match.groups()[0])
+                            continue
 
-                    match = re.search(r'^-r(.+)', token) # -rREVNUM
-                    if match:
-                        externRev = int(match.groups()[0])
-                        continue
+                        if token == '-r': # -r REVNUM
+                            nexttoken = tokens.pop(0)
+                            externRev = int(nexttoken)
+                            continue
 
-                    if token == '-r': # -r REVNUM
-                        nexttoken = tokens.pop(0)
-                        externRev = int(nexttoken)
-                        continue
+                        childObject = currentParentDir + "/" + token # local path
 
-                    childObject = currentParentDir + "/" + token # local path
+                    assert externUrl != None and childObject != None
 
-                assert externUrl != None and childObject != None
+                    # Doctor the URL if we're using a local mirror of a remote repo
+                    for remoterepo in remoterepos:
+                        externUrl = externUrl.replace(remoterepo, rootrepo)
 
-                # Doctor the URL if we're using a local mirror of a remote repo
-                for remoterepo in remoterepos:
-                    externUrl = externUrl.replace(remoterepo, rootrepo)
-
-                broken = False
-                try:
-                    nodekind = getNodeKindForUrl(externUrl, revnum)
-                except:
-                    broken = True
-                    nodekind = None
+                    broken = False
+                    try:
+                        nodekind = getNodeKindForUrl(externUrl, revnum)
+                    except:
+                        broken = True
+                        nodekind = None
 
 
-                yield Extern(   object=childObject,
-                                url=externUrl,
-                                rev = externRev,
-                                pegrev = externPegrev,
-                                isdirectory=(nodekind == "directory"),
-                                broken=broken   )
+                    yield Extern(   object=childObject,
+                                    url=externUrl,
+                                    rev = externRev,
+                                    pegrev = externPegrev,
+                                    isdirectory=(nodekind == "directory"),
+                                    broken=broken   )
             except:
                 print "Here's the entire text:"
                 print text
