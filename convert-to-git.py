@@ -127,7 +127,7 @@ def isThisPathDeleted(url, revnum):
 # Handling Externs
 #
 
-Extern = namedtuple("Extern", ["object", "url", "isdirectory"])
+Extern = namedtuple("Extern", ["object", "url", "rev", "pegrev", "isdirectory"])
 
 def getExternals(revnum):
 	text = readcall("svn propget svn:externals -r %d -R" % (revnum))
@@ -136,45 +136,67 @@ def getExternals(revnum):
 	currentParentDir = None
 	for line in text:
 		tokens = line.split()
-		if len(tokens) == 2 or len(tokens) == 4:
-			if tokens[1] == "-" and len(tokens) == 4:
-				currentParentDir = tokens[0]
-				if re.search(r'^.*://', currentParentDir):
-					# Great, they gave us a URL when we needed a relative path. Let's remake the relative path.
-					url = getUrl(revnum)
-					currentParentDir = currentParentDir.replace(url, "")
-					if currentParentDir[0] == '/':
-						currentParentDir = currentParentDir[1:]
+		if tokens:
+			try:
+				if tokens[1] == "-":
+					currentParentDir = tokens[0]
+					if re.search(r'^.*://', currentParentDir):
+						# Great, they gave us a URL when we needed a relative path. Let's remake the relative path.
+						url = getUrl(revnum)
+						currentParentDir = currentParentDir.replace(url, "")
+						if currentParentDir[0] == '/':
+							currentParentDir = currentParentDir[1:]
+					#print "currentParentDir:", currentParentDir
+					tokens = tokens[2:]
 
-				#print "currentParentDir:", currentParentDir
-				tokens = tokens[2:]
+				# Parse extern line
+				childObject = None
+				externUrl = None
+				externRev = None
+				externPegrev = None
+				while len(tokens):
+					token = tokens.pop(0)
+					if re.search(r'^.+://', token): # URL
+						match = re.search(r'^(.+)@(.+)', token)
+						if match:
+							externUrl = match.groups()[0]
+							externPegrev = int(match.groups()[1])
+						else:
+							externUrl = token
+						continue
 
-			if tokens[1] != "-": # I guess when we remove an extern it shows up as "dir -"
-				if re.search(r'^https*://', tokens[0]): # TODO: just search for '^*://', could be any protocol.
-					childObject = currentParentDir + "/" + tokens[1]
-					externUrl = tokens[0]
-				elif re.search(r'^https*://', tokens[1]):
-					childObject = currentParentDir + "/" + tokens[0]
-					externUrl = tokens[1]
-				else:
-					print "Here's the entire text:"
-					print text
-					print "Here's the tokens:", tokens
-					raise RuntimeError("Where's the URL?: %s" % line)
+					match = re.search(r'^-r(.+)', token) # -rREVNUM
+					if match:
+						externRev = int(match.groups()[0])
+						continue
+
+					if token == '-r': # -r REVNUM
+						nexttoken = tokens.pop(0)
+						externRev = int(nexttoken)
+						continue
+
+					childObject = currentParentDir + "/" + token # local path
+
+				assert externUrl != None and childObject != None
+
 				# Doctor the URL if we're using a local mirror of a remote repo
 				if remoterepos:
 					for remoterepo in remoterepos:
 						externUrl = externUrl.replace(remoterepo, rootrepo)
 
 				nodekind = getNodeKindForUrl(externUrl, revnum)
-				print "Node Kind for %s@%d is %s" % (externUrl, revnum, nodekind)
-				#print "childDir:", childDir
-				#print "externUrl:", externUrl
-				yield Extern(object=childObject, url=externUrl, isdirectory=(nodekind == "directory"))
-		elif len(tokens) != 0:
-			print "Here's the entire text:"
-			print text
-			raise RuntimeError("line with odd number of tokens: %s" % line)
+				yield Extern(	object=childObject,
+								url=externUrl,
+							 	rev = externRev,
+							 	pegrev = externPegrev,
+							 	isdirectory=(nodekind == "directory")	)
+			except:
+				print "Here's the entire text:"
+				print text
+				print "Here's the current line:"
+				print line
+				print "Tokens:", tokens
+				raise
 
 def didExternalsChange(revnum):
 	text = readcall("svn diff -c %d" % (revnum))
@@ -200,21 +222,16 @@ def updateExternalsTo(revnum):
 		print "Extern:", ex
 
 		# Make sure the extern's url contains a revision number, if not provided.
-		exrevnum = revnum
-		exurl = ex.url
-		match = re.search(r'(.*)@(.*)', exurl)
-		if match:
-			exurl = match.groups()[0]
-			exrevnum = int(match.groups()[1])
-			print "Externs %s specified revision to %d" % (exurl, exrevnum)
+		exrev = ex.rev if ex.rev != None else revnum
+		expegrev = ex.pegrev if ex.pegrev != None else exrev
 
 		if ex.isdirectory:
 			if not os.path.exists(ex.object):
 				os.makedirs(ex.object)
 			if os.path.exists( os.path.join(ex.object, '.svn') ):
-				retval = call("svn switch --ignore-externals -r %d %s@%d %s" % (exrevnum, exurl, exrevnum, ex.object))
+				retval = call("svn switch --ignore-externals -r %d %s@%d %s" % (exrev, ex.url, expegrev, ex.object))
 			else:
-				retval = call("svn co --ignore-externals -r %d %s@%d %s" % (exrevnum, exurl, exrevnum, ex.object))
+				retval = call("svn co --ignore-externals -r %d %s@%d %s" % (exrev, ex.url, expegrev, ex.object))
 			if retval != 0:
 				raise RuntimeError("svn error")
 			os.chdir(ex.object)
@@ -223,7 +240,7 @@ def updateExternalsTo(revnum):
 		else:
 			if os.path.exists(ex.object):
 				os.remove(ex.object)
-			if call("svn export -r %d %s@%d %s" % (exrevnum, exurl, exrevnum, ex.object))!= 0:
+			if call("svn export -r %d %s@%d %s" % (exrev, ex.url, expegrev, ex.object))!= 0:
 				raise RuntimeError("svn error")
 
 #
@@ -280,7 +297,7 @@ else:
 # revision 3126, BandageCommServer can't be found. WTF? It's there!
 # revision 3384, BandageCommServer was removed.
 # revision 3385, BandageCommServer was brought back.
-
+# revision 5094, specified '-r REV URL@PEGREV' extern form
 # revision 9000, sensor_stream has a file extern "vc_queue.h" # handled
 
 #testpoint = 9000
