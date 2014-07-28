@@ -152,7 +152,7 @@ def getUrl(revnum):
             return match.groups()[0]
 
 def getNodeKindForUrl(url, revnum):
-    text = readcall("svn info -r %d %s" % (revnum, url))
+    text = readcall("svn info -r %d %s@%d" % (revnum, url, revnum))
     text = text.splitlines()
     for line in text:
         match = re.search(r'^Node Kind: (.*)$', line)
@@ -355,6 +355,8 @@ for revnum in revnumbers:
     print "\n-------- Replaying revision %d --------\n" % revnum
     rev = getRevision(rootrepo, revnum)
 
+    print rev
+
     # Update project root to revision
     if os.path.exists('.svn'):
         retval = call("svn switch --ignore-externals -r %d %s@%d" % (rev.number, repo, rev.number))
@@ -364,8 +366,18 @@ for revnum in revnumbers:
         if isThisPathDeleted(repo, rev.number):
             print "Oh, this path was deleted! Someone forgot how to merge... Remove everything for now."
             deleteAllContentInCwd()
+            retval = 0
+
+    if retval != 0:
+        # Let's try not specifying a pegrev. This will probably help in the case that the source for this object
+        # came from another location.
+        if os.path.exists('.svn'):
+            retval = call("svn switch --ignore-externals -r %d %s" % (rev.number, repo))
         else:
-            raise RuntimeError("svn error")
+            retval = call('svn co --ignore-externals -r %d %s .' % (rev.number, repo))
+
+    if retval != 0:
+        raise RuntimeError("svn error")
     else:
         updateExternalsTo(rev.number)
 
