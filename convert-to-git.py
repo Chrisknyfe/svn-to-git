@@ -175,7 +175,7 @@ def isThisPathDeleted(url, revnum):
 # Handling Externs
 #
 
-Extern = namedtuple("Extern", ["object", "url", "rev", "pegrev", "isdirectory"])
+Extern = namedtuple("Extern", ["object", "url", "rev", "pegrev", "isdirectory", "broken"])
 
 def getExternals(revnum):
     text = readcall("svn propget svn:externals -r %d -R" % (revnum))
@@ -231,12 +231,20 @@ def getExternals(revnum):
                 for remoterepo in remoterepos:
                     externUrl = externUrl.replace(remoterepo, rootrepo)
 
-                nodekind = getNodeKindForUrl(externUrl, revnum)
+                broken = False
+                try:
+                    nodekind = getNodeKindForUrl(externUrl, revnum)
+                except:
+                    broken = True
+                    nodekind = None
+
+
                 yield Extern(   object=childObject,
                                 url=externUrl,
                                 rev = externRev,
                                 pegrev = externPegrev,
-                                isdirectory=(nodekind == "directory")   )
+                                isdirectory=(nodekind == "directory"),
+                                broken=broken   )
             except:
                 print "Here's the entire text:"
                 print text
@@ -252,6 +260,13 @@ def didExternalsChange(revnum):
     else:
         return False
 
+def removeExternal(ex):
+    if os.path.exists(ex.object):
+        if ex.isdirectory or os.path.isdir(ex.object):
+            shutil.rmtree(ex.object)
+        else:
+            os.remove(ex.object)
+
 def updateExternalsTo(revnum):
     cwd = os.getcwd()
 
@@ -259,37 +274,36 @@ def updateExternalsTo(revnum):
     if didExternalsChange(revnum):
         print "Externals changed, clearing externals."
         for ex in getExternals(revnum-1):
-            if os.path.exists(ex.object):
-                if ex.isdirectory:
-                    shutil.rmtree(ex.object)
-                else:
-                    os.remove(ex.object)
+            removeExternal(ex)
 
     # Update all externals recursively.
     for ex in getExternals(revnum):
         print "Extern:", ex
 
-        # Make sure the extern's url contains a revision number, if not provided.
-        exrev = ex.rev if ex.rev != None else revnum
-        expegrev = ex.pegrev if ex.pegrev != None else exrev
-
-        if ex.isdirectory:
-            if not os.path.exists(ex.object):
-                os.makedirs(ex.object)
-            if os.path.exists( os.path.join(ex.object, '.svn') ):
-                retval = call("svn switch --ignore-externals -r %d %s@%d %s" % (exrev, ex.url, expegrev, ex.object))
-            else:
-                retval = call("svn co --ignore-externals -r %d %s@%d %s" % (exrev, ex.url, expegrev, ex.object))
-            if retval != 0:
-                raise RuntimeError("svn error")
-            os.chdir(ex.object)
-            updateExternalsTo(revnum)
-            os.chdir(cwd)
+        if ex.broken:
+            removeExternal(ex)
         else:
-            if os.path.exists(ex.object):
-                os.remove(ex.object)
-            if call("svn export -r %d %s@%d %s" % (exrev, ex.url, expegrev, ex.object))!= 0:
-                raise RuntimeError("svn error")
+            # Make sure the extern's url contains a revision number, if not provided.
+            exrev = ex.rev if ex.rev != None else revnum
+            expegrev = ex.pegrev if ex.pegrev != None else exrev
+
+            if ex.isdirectory:
+                if not os.path.exists(ex.object):
+                    os.makedirs(ex.object)
+                if os.path.exists( os.path.join(ex.object, '.svn') ):
+                    retval = call("svn switch --ignore-externals -r %d %s@%d %s" % (exrev, ex.url, expegrev, ex.object))
+                else:
+                    retval = call("svn co --ignore-externals -r %d %s@%d %s" % (exrev, ex.url, expegrev, ex.object))
+                if retval != 0:
+                    raise RuntimeError("svn error")
+                os.chdir(ex.object)
+                updateExternalsTo(revnum)
+                os.chdir(cwd)
+            else:
+                if os.path.exists(ex.object):
+                    os.remove(ex.object)
+                if call("svn export -r %d %s@%d %s" % (exrev, ex.url, expegrev, ex.object))!= 0:
+                    raise RuntimeError("svn error")
 
 #
 # Helper Functions
