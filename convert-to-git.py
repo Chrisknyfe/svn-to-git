@@ -212,10 +212,11 @@ def updateExternalsTo(revnum):
 	if didExternalsChange(revnum):
 		print "Externals changed, clearing externals."
 		for ex in getExternals(revnum-1):
-			if ex.isdirectory:
-				shutil.rmtree(ex.object)
-			else:
-				os.remove(ex.object)
+			if os.path.exists(ex.object):
+				if ex.isdirectory:
+					shutil.rmtree(ex.object)
+				else:
+					os.remove(ex.object)
 
 	# Update all externals recursively.
 	for ex in getExternals(revnum):
