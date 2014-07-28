@@ -42,7 +42,7 @@ def parseOptions():
     elif len(args) == 1:
         targetdir = args[0]
     else:
-        usagequit("Too many arguments, only need one.")
+        usagequit("Too many arguments, only need one directory.")
 
     rootrepo = None
     repo = None
