@@ -178,6 +178,10 @@ def isThisPathDeleted(url, revnum):
 Extern = namedtuple("Extern", ["object", "url", "rev", "pegrev", "isdirectory", "broken"])
 
 def getExternals(revnum):
+    # TODO: What we actually need is the revision number of the current directory.
+    # If we're doing this recurisvely, we might be inside an external already
+    # and the "global" revision number might not apply here if we specify an
+    # extern rev or pegrev in the parent extern.
     text = readcall("svn propget svn:externals -r %d -R" % (revnum))
     text = text.splitlines()
 
@@ -252,10 +256,11 @@ def getExternals(revnum):
                 print "Here's the current line:"
                 print line
                 print "Tokens:", tokens
+                print "CWD:", os.getcwd()
                 raise
 
 def didExternalsChange(revnum):
-    text = readcall("svn diff -c %d" % (revnum))
+    text = readcall("svn diff -c %d %s" % (revnum, rootrepo))
     if text.find("Modified: svn:externals") != -1:
         return True
     else:
@@ -372,13 +377,16 @@ for revnum in revnumbers:
 
     print rev
 
+    thispathwasdeleted = False
+
     # Update project root to revision
     if os.path.exists('.svn'):
         retval = call("svn switch --ignore-externals -r %d %s@%d" % (rev.number, repo, rev.number))
     else:
         retval = call('svn co --ignore-externals -r %d %s@%d .' % (rev.number, repo, rev.number))
     if retval != 0:
-        if isThisPathDeleted(repo, rev.number):
+        thispathwasdeleted = isThisPathDeleted(repo, rev.number)
+        if thispathwasdeleted:
             print "Oh, this path was deleted! Someone forgot how to merge... Remove everything for now."
             deleteAllContentInCwd()
             retval = 0
@@ -393,7 +401,7 @@ for revnum in revnumbers:
 
     if retval != 0:
         raise RuntimeError("svn error")
-    else:
+    elif not thispathwasdeleted:
         updateExternalsTo(rev.number)
 
     call("git add -u")
