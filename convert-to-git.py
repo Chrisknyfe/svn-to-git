@@ -341,7 +341,15 @@ def getExternals(toplevelrevnum):
 
                     # Get the node kind for this extern, or find out if the extern even exists.
                     broken = False
-                    nodekind = getNodeKindForUrl(externUrl, externRev, externPegrev)
+                    try:
+                        nodekind = getNodeKindForUrl(externUrl, externRev, externPegrev)
+                    except CalledProcessError as e:
+                        if e.stderr.find("non-existent in revision") != -1:
+                            print "Extern can't be found at this location."
+                        else:
+                            raise
+                        broken = True
+                        nodekind = None
                         
                     yield Extern(   object=childObject,
                                     url=externUrl,
