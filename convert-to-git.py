@@ -241,7 +241,7 @@ def getExternals(revoffset = 0):
                         # Great, they gave us a URL when we needed a relative path. Let's remake the relative path.
                         url = getUrlInCwd()
                         currentParentDir = currentParentDir.replace(url, "")
-                        if currentParentDir[0] == '/':
+                        if currentParentDir and currentParentDir[0] == '/':
                             currentParentDir = currentParentDir[1:]
                     #print "currentParentDir:", currentParentDir
                     tokens = tokens[2:]
@@ -274,7 +274,11 @@ def getExternals(revoffset = 0):
                             externRev = int(nexttoken)
                             continue
                         # local path
-                        childObject = currentParentDir + "/" + token
+                        if currentParentDir:
+                            childObject = currentParentDir + "/" + token
+                        else:
+                            childObject = token
+                            
                     assert externUrl != None and childObject != None
 
                     # Doctor the URL if we're using a local mirror of a remote repo
