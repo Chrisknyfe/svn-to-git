@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 
-import sys, os, shutil, subprocess, re, getopt
+import sys, os, shutil, subprocess, re, getopt, signal, shlex
 from collections import namedtuple
 
 #
-# Input parameters
+# Input parameter related functions
 #
 
 usagestr = \
@@ -80,20 +80,54 @@ def getUserLookup(filename):
     return userLookup
 
 
-rootrepo, repo, remoterepos, targetdir, usersfile = parseOptions()
-userLookup = getUserLookup(usersfile)
 
 
 #
 # Shell command wrappers
 #
 
-def call(cmd):
+class TimeoutException(Exception):
+    pass
+    
+def timeoutHandler(signum, frame):
+    raise TimeoutException()
+    
+    
+def call(cmd, timeout = None):
     print cmd
-    return subprocess.call(cmd, shell=True)
-def readcall(cmd):
+    args = shlex.split(cmd.encode('utf8'))
+    try:
+        if timeout is not None:
+            signal.signal(signal.SIGALRM, timeoutHandler)
+            signal.alarm(timeout)
+        p = subprocess.Popen(args)
+        p.wait()
+        if timeout is not None:
+            signal.alarm(0)
+    except TimeoutException:
+        p.kill()
+        print "command timed out"
+        raise
+    return p.returncode
+def readcall(cmd, timeout = None):
     print cmd
-    return subprocess.check_output(cmd, shell=True)
+    args = shlex.split(cmd.encode('utf8'))
+    try:
+        if timeout is not None:
+            signal.signal(signal.SIGALRM, timeoutHandler)
+            signal.alarm(timeout)
+        p = subprocess.Popen(args, stdout=subprocess.PIPE)
+        stdoutdata, stderrdata = p.communicate()
+        if timeout is not None:
+            signal.alarm(0)
+    except TimeoutException:
+        p.kill()
+        print "command timed out"
+        raise
+    if p.poll() != 0:
+        raise subprocess.CalledProcessError(p.returncode, cmd)
+    return stdoutdata
+    
 
 #
 # History Queries
@@ -281,7 +315,10 @@ def getExternals(revoffset = 0):
                 raise
 
 def didExternalsChange(revnum):
-    text = readcall("svn diff -c %d %s" % (revnum, rootrepo))
+    try:
+        text = readcall("svn diff -c %d %s" % (revnum, rootrepo), timeout=30)
+    except TimeoutException:
+        return True
     if text.find("Modified: svn:externals") != -1:
         return True
     else:
@@ -340,6 +377,15 @@ def deleteAllContentInCwd():
     for item in os.listdir(os.getcwd()):
         if not item in ['.git', '.svn']:
             call("rm -fr %s" % item)
+            
+#============================================================#
+
+#
+# Parse input parameters
+#      
+            
+rootrepo, repo, remoterepos, targetdir, usersfile = parseOptions()
+userLookup = getUserLookup(usersfile)
 
 #
 # Create our new git repo
