@@ -354,7 +354,7 @@ def updateExternalsTo(revnum):
                 if not os.path.exists(ex.object):
                     os.makedirs(ex.object)
                 if os.path.exists( os.path.join(ex.object, '.svn') ):
-                    retval = call("svn switch --ignore-externals -r %d %s@%d %s" % (exrev, ex.url, expegrev, ex.object))
+                    retval = call("svn switch --ignore-externals --ignore-ancestry -r %d %s@%d %s" % (exrev, ex.url, expegrev, ex.object))
                 else:
                     retval = call("svn co --ignore-externals -r %d %s@%d %s" % (exrev, ex.url, expegrev, ex.object))
                 if retval != 0:
@@ -363,7 +363,7 @@ def updateExternalsTo(revnum):
                 updateExternalsTo(revnum)
                 os.chdir(cwd)
             else:
-                if os.path.exists(ex.object):
+                if os.path.exists(ex.object) and not os.path.isdir(ex.object):
                     os.remove(ex.object)
                 if call("svn export -r %d %s@%d %s" % (exrev, ex.url, expegrev, ex.object))!= 0:
                     raise RuntimeError("svn error")
