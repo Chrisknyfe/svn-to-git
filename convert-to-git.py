@@ -198,8 +198,8 @@ def getLastRevision(repo):
     revision = parseLogEntry(text)
     return revision
 
-def getRevision(repo, rev):
-    text, errtext = readcall("svn log --limit 1 %s@%d" % (repo, rev) )
+def getRevision(rev):
+    text, errtext = readcall("svn log -r %d --limit 1 %s" % (rev, rootrepo) )
     revision = parseLogEntry(text)
     return revision
 
@@ -269,9 +269,8 @@ def isThisPathDeleted(url, revnum):
 
 Extern = namedtuple("Extern", ["object", "url", "rev", "pegrev", "isdirectory", "broken"])
 
-def getExternals(revoffset = 0):
-    revnum = getRevisionInCwd() + revoffset
-
+def getExternals(toplevelrevnum):
+    revnum = getRevisionInCwd()
     text, errtext = readcall("svn propget svn:externals -r %d -R" % (revnum))
     text = text.splitlines()
 
@@ -330,19 +329,19 @@ def getExternals(revoffset = 0):
                     # Doctor the URL if we're using a local mirror of a remote repo
                     for remoterepo in remoterepos:
                         externUrl = externUrl.replace(remoterepo, rootrepo)
+                        
+                    # Set the pegrev to the top-level rev. We want to get this extern
+                    # as if we were checking it out on the day of this commit.
+                    if externPegrev == None:
+                        externPegrev = toplevelrevnum
+                    # If operative rev isn't specified, doesn't hurt to set it to the
+                    # pegrev.
+                    if externRev == None:
+                        externRev = externPegrev
 
                     # Get the node kind for this extern, or find out if the extern even exists.
                     broken = False
-                    try:
-                        noderev = externRev
-                        nodepegrev = externPegrev
-                        noderev = externRev if externRev != None else revnum
-                        nodepegrev = externPegrev if externPegrev != None else noderev
-                        nodekind = getNodeKindForUrl(externUrl, noderev, nodepegrev)
-                    except CalledProcessError as e: # TODO: let's examine the error string explicitly.
-                        print "Node kind lookup failed, marking this extern as broken."
-                        broken = True
-                        nodekind = None
+                    nodekind = getNodeKindForUrl(externUrl, externRev, externPegrev)
                         
                     yield Extern(   object=childObject,
                                     url=externUrl,
@@ -351,12 +350,14 @@ def getExternals(revoffset = 0):
                                     isdirectory=(nodekind == "directory"),
                                     broken=broken   )
             except:
+                print "-------- Getting Externals --------"
                 print "Here's the entire text:"
                 print text
                 print "Here's the current line:"
                 print line
                 print "Tokens:", tokens
                 print "CWD:", os.getcwd()
+                print "-----------------------------------"
                 raise
 
 def didExternalsChange(revnum):
@@ -368,7 +369,7 @@ def didExternalsChange(revnum):
         return True
     else:
         return False
-
+        
 def removeExternal(ex):
     if os.path.exists(ex.object):
         if ex.isdirectory or os.path.isdir(ex.object):
@@ -378,31 +379,20 @@ def removeExternal(ex):
 
 def updateExternalsTo(revnum):
     cwd = os.getcwd()
-
-    # Make sure removed externals don't get kept.
-    if didExternalsChange(revnum):
-        print "Externals changed, clearing externals."
-        for ex in getExternals(-1):
-            removeExternal(ex)
-
+    
     # Update all externals recursively.
-    for ex in getExternals():
+    for ex in getExternals(revnum):
         print "Extern:", ex
-
         if ex.broken:
             removeExternal(ex)
         else:
-            # Make sure the extern's url contains a revision number, if not provided.
-            exrev = ex.rev if ex.rev != None else revnum
-            expegrev = ex.pegrev if ex.pegrev != None else exrev
-
             if ex.isdirectory:
                 if not os.path.exists(ex.object):
                     os.makedirs(ex.object)
                 if os.path.exists( os.path.join(ex.object, '.svn') ):
-                    retval = call("svn switch --ignore-externals --ignore-ancestry -r %d %s@%d %s" % (exrev, ex.url, expegrev, ex.object))
+                    retval = call("svn switch --ignore-externals --ignore-ancestry -r %d %s@%d %s" % (ex.rev, ex.url, ex.pegrev, ex.object))
                 else:
-                    retval = call("svn co --ignore-externals -r %d %s@%d %s" % (exrev, ex.url, expegrev, ex.object))
+                    retval = call("svn co --ignore-externals -r %d %s@%d %s" % (ex.rev, ex.url, ex.pegrev, ex.object))
                 if retval != 0:
                     raise RuntimeError("svn error") # TODO: let's report this error explicitly.
                 os.chdir(ex.object)
@@ -411,16 +401,16 @@ def updateExternalsTo(revnum):
             else:
                 if os.path.exists(ex.object) and not os.path.isdir(ex.object):
                     os.remove(ex.object)
-                if call("svn export -r %d %s@%d %s" % (exrev, ex.url, expegrev, ex.object))!= 0:
-                    raise RuntimeError("svn error")
+                if call("svn export -r %d %s@%d %s" % (ex.rev, ex.url, ex.pegrev, ex.object))!= 0:
+                    raise RuntimeError("svn error") # TODO: let's report this error explicitly.
 
 #
 # Helper Functions
 #
 
-def deleteAllContentInCwd():
+def deleteAllSvnContentInCwd():
     for item in os.listdir(os.getcwd()):
-        if not item in ['.git', '.svn']:
+        if not item in ['.git']:
             call("rm -fr %s" % item)
             
 #============================================================#
@@ -536,10 +526,17 @@ else:
 
 for revnum in revnumbers:
     print "\n-------- Replaying revision %d --------\n" % revnum
-    rev = getRevision(rootrepo, revnum)
+    rev = getRevision(revnum)
     print rev
     
     ignoreThisChange = False
+    
+    # If any externals change, nuke the entire repo and get the externals fresh.
+    # This way, we don't have to look into the history to figure out what to delete.
+    # Trust me this will be faster.
+    if didExternalsChange(revnum):
+        print "Externals changed, nuking the entire repo."
+        deleteAllSvnContentInCwd()
 
     # Update project root to revision
     try:
