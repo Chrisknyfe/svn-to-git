@@ -32,7 +32,7 @@ def usagequit(message):
 
 def parseOptions():
     try:
-        opts, args = getopt.getopt(sys.argv[1:], '', ['root=', 'repo=', 'remote=', 'users='])
+        opts, args = getopt.getopt(sys.argv[1:], '', ['root=', 'repo=', 'remote=', 'users=', 'ancestry'])
     except getopt.GetoptError as err:
         usagequit(str(err))
 
@@ -48,6 +48,7 @@ def parseOptions():
     repo = None
     remoterepos = []
     usersfile = None
+    checkancestry = False
     for o, a in opts:
         if o == '--root':
             rootrepo = a
@@ -57,6 +58,9 @@ def parseOptions():
             remoterepos.append(a)
         elif o == '--users':
             usersfile = a
+        elif o == '--ancestry':
+            checkancestry = True
+            
     if rootrepo == None:
         usagequit("Please specify a root repository with --root")
     if repo == None:
@@ -64,7 +68,7 @@ def parseOptions():
     if usersfile == None:
         usersfile = 'gitusers.txt'
     repo = rootrepo + repo
-    return rootrepo, repo, remoterepos, targetdir, usersfile
+    return rootrepo, repo, remoterepos, targetdir, usersfile, checkancestry
 
 def getUserLookup(filename):
     userLookup = {}
@@ -92,9 +96,9 @@ class TimeoutException(Exception):
 def timeoutHandler(signum, frame):
     raise TimeoutException()
     
-    
-def call(cmd, timeout = None):
-    print cmd
+def call(cmd, timeout = None, printcommand=True):
+    if printcommand:
+        print cmd
     args = shlex.split(cmd.encode('utf8'))
     try:
         if timeout is not None:
@@ -109,8 +113,11 @@ def call(cmd, timeout = None):
         print "command timed out"
         raise
     return p.returncode
-def readcall(cmd, timeout = None):
-    print cmd
+    
+# TODO: give the user the opportunity to examine stderr.
+def readcall(cmd, timeout = None, printcommand=True):
+    if printcommand:
+        print cmd
     args = shlex.split(cmd.encode('utf8'))
     try:
         if timeout is not None:
@@ -195,6 +202,7 @@ def getUrlInCwd():
         if match:
             return match.groups()[0]
     raise ValueError("No URL found in 'svn info'")
+
 
 def getNodeKindForUrl(url, rev, pegrev):
     text = readcall("svn info -r %d %s@%d" % (rev, url, pegrev))
@@ -293,7 +301,7 @@ def getExternals(revoffset = 0):
                         noderev = externRev if externRev != None else revnum
                         nodepegrev = externPegrev if externPegrev != None else noderev
                         nodekind = getNodeKindForUrl(externUrl, noderev, nodepegrev)
-                    except subprocess.CalledProcessError as e: 
+                    except subprocess.CalledProcessError as e: # TODO: let's examine the error string explicitly.
                         print "Node kind lookup failed, marking this extern as broken."
                         broken = True
                         nodekind = None
@@ -358,7 +366,7 @@ def updateExternalsTo(revnum):
                 else:
                     retval = call("svn co --ignore-externals -r %d %s@%d %s" % (exrev, ex.url, expegrev, ex.object))
                 if retval != 0:
-                    raise RuntimeError("svn error")
+                    raise RuntimeError("svn error") # TODO: let's report this error explicitly.
                 os.chdir(ex.object)
                 updateExternalsTo(revnum)
                 os.chdir(cwd)
@@ -383,8 +391,39 @@ def deleteAllContentInCwd():
 # Parse input parameters
 #      
             
-rootrepo, repo, remoterepos, targetdir, usersfile = parseOptions()
+rootrepo, repo, remoterepos, targetdir, usersfile, checkancestry = parseOptions()
 userLookup = getUserLookup(usersfile)
+
+#
+# Debug: check ancestry
+#
+
+def getUrlForRepoAtRevision(repo, rev):
+    text = readcall("svn info -r %d %s" % (rev, repo), printcommand=False)
+    text = text.splitlines()
+    for line in text:
+        match = re.search(r'^URL: (.*)$', line)
+        if match:
+            return match.groups()[0]
+    raise ValueError("No URL found in 'svn info'")
+
+if checkancestry:
+    startrevnum = 0
+    lastrev = getLastRevision(repo)
+    revnumbers = range(startrevnum, lastrev.number + 1)
+    print "Ancestry for %s from %d to %d" % (repo, lastrev.number, startrevnum)
+    
+    previousUrl = ""
+    for revnum in revnumbers:
+         try:
+            url = getUrlForRepoAtRevision(repo, revnum)
+         except subprocess.CalledProcessError: # TODO: let's examine the error string explicitly.
+            url = "Not present in repo"
+         if url != previousUrl:
+             print "%d:\t%s" % (revnum, url)
+             previousUrl = url
+    exit()
+    
 
 #
 # Create our new git repo
@@ -445,14 +484,14 @@ def updateProjectRootToRevision(rev):
         retval = call("svn switch --ignore-externals --accept theirs-full -r %d %s@%d" % (rev.number, repo, rev.number))
     else:
         retval = call('svn co --ignore-externals -r %d %s@%d .' % (rev.number, repo, rev.number))
-    if retval != 0:
+    if retval != 0: # TODO: let's examine the error string explicitly.
         thispathwasdeleted = isThisPathDeleted(repo, rev.number)
         if thispathwasdeleted:
             print "Oh, this path was deleted! Someone forgot how to merge... Remove everything for now."
             deleteAllContentInCwd()
             retval = 0
 
-    if retval != 0:
+    if retval != 0: # TODO: let's examine the error string explicitly.
         # Let's try not specifying a pegrev. This will probably help in the case that the source for this object
         # came from another location.
         if os.path.exists('.svn'):
@@ -471,14 +510,14 @@ for revnum in revnumbers:
     thispathwasdeleted = False
 
     retval = updateProjectRootToRevision(rev)
-    if retval != 0:
+    if retval != 0: # TODO: let's examine the error string explicitly.
         # nuke it and try again, in case of conflicts.
         deleteAllContentInCwd()
         if os.path.exists('.svn'):
             call("rm -fr .svn")
         retval = updateProjectRootToRevision(rev)
     
-    if retval != 0:
+    if retval != 0: # TODO: let's examine the error string explicitly.
         raise RuntimeError("svn error")
     elif not thispathwasdeleted:
         updateExternalsTo(rev.number)
