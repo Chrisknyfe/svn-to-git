@@ -93,6 +93,13 @@ def getUserLookup(filename):
 class TimeoutException(Exception):
     pass
     
+class CalledProcessError(StandardError):
+    def __init__(self, returncode, command, stdout, stderr):
+        self.returncode = returncode
+        self.command = command
+        self.stdout = stdout
+        self.stderr = stderr
+    
 def timeoutHandler(signum, frame):
     raise TimeoutException()
     
@@ -114,8 +121,7 @@ def call(cmd, timeout = None, printcommand=True):
         raise
     return p.returncode
     
-# TODO: give the user the opportunity to examine stderr.
-def readcall(cmd, timeout = None, printcommand=True):
+def readcall(cmd, timeout = None, printcommand=True, printstdout=False, printstderr=True):
     if printcommand:
         print cmd
     args = shlex.split(cmd.encode('utf8'))
@@ -123,7 +129,7 @@ def readcall(cmd, timeout = None, printcommand=True):
         if timeout is not None:
             signal.signal(signal.SIGALRM, timeoutHandler)
             signal.alarm(timeout)
-        p = subprocess.Popen(args, stdout=subprocess.PIPE)
+        p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdoutdata, stderrdata = p.communicate()
         if timeout is not None:
             signal.alarm(0)
@@ -131,9 +137,13 @@ def readcall(cmd, timeout = None, printcommand=True):
         p.kill()
         print "command timed out"
         raise
+    if printstdout:
+        print stdoutdata
+    if printstderr:
+        print >> sys.stderr, stderrdata
     if p.poll() != 0:
-        raise subprocess.CalledProcessError(p.returncode, cmd)
-    return stdoutdata
+        raise CalledProcessError(p.returncode, cmd, stdoutdata, stderrdata)
+    return stdoutdata, stderrdata
     
 
 #
@@ -166,17 +176,17 @@ def parseLogEntry(intext):
         raise RuntimeError("Not a valid log from 'svn log', cannot parse:\n%s" % text[0])
 
 def getFirstRevision(repo):
-    text = readcall("svn log -r0:HEAD --limit 1 %s" % repo)
+    text, errtext = readcall("svn log -r0:HEAD --limit 1 %s" % repo)
     revision = parseLogEntry(text)
     return revision
 
 def getLastRevision(repo):
-    text = readcall("svn log --limit 1 %s" % repo)
+    text, errtext = readcall("svn log --limit 1 %s" % repo)
     revision = parseLogEntry(text)
     return revision
 
 def getRevision(repo, rev):
-    text = readcall("svn log --limit 1 %s@%d" % (repo, rev) )
+    text, errtext = readcall("svn log --limit 1 %s@%d" % (repo, rev) )
     revision = parseLogEntry(text)
     return revision
 
@@ -186,7 +196,7 @@ def getRevision(repo, rev):
 
 
 def getRevisionInCwd():
-    text = readcall("svn info")
+    text, errtext = readcall("svn info")
     text = text.splitlines()
     for line in text:
         match = re.search(r'^Revision: (.*)$', line)
@@ -195,7 +205,7 @@ def getRevisionInCwd():
     raise ValueError("No Revision found in 'svn info'")
 
 def getUrlInCwd():
-    text = readcall("svn info")
+    text, errtext = readcall("svn info")
     text = text.splitlines()
     for line in text:
         match = re.search(r'^URL: (.*)$', line)
@@ -205,7 +215,7 @@ def getUrlInCwd():
 
 
 def getNodeKindForUrl(url, rev, pegrev):
-    text = readcall("svn info -r %d %s@%d" % (rev, url, pegrev))
+    text, errtext = readcall("svn info -r %d %s@%d" % (rev, url, pegrev))
     text = text.splitlines()
     for line in text:
         match = re.search(r'^Node Kind: (.*)$', line)
@@ -214,7 +224,7 @@ def getNodeKindForUrl(url, rev, pegrev):
     raise ValueError("No Node Kind found in 'svn info'")
 
 def isThisPathDeleted(url, revnum):
-    text = readcall("svn log -v -r %d %s" % (revnum, rootrepo))
+    text, errtext = readcall("svn log -v -r %d %s" % (revnum, rootrepo))
     text = text.splitlines()
     for line in text:
         match = re.search(r'^ *D(.*)', line)
@@ -234,7 +244,7 @@ Extern = namedtuple("Extern", ["object", "url", "rev", "pegrev", "isdirectory", 
 def getExternals(revoffset = 0):
     revnum = getRevisionInCwd() + revoffset
 
-    text = readcall("svn propget svn:externals -r %d -R" % (revnum))
+    text, errtext = readcall("svn propget svn:externals -r %d -R" % (revnum))
     text = text.splitlines()
 
     currentParentDir = None
@@ -301,7 +311,7 @@ def getExternals(revoffset = 0):
                         noderev = externRev if externRev != None else revnum
                         nodepegrev = externPegrev if externPegrev != None else noderev
                         nodekind = getNodeKindForUrl(externUrl, noderev, nodepegrev)
-                    except subprocess.CalledProcessError as e: # TODO: let's examine the error string explicitly.
+                    except CalledProcessError as e: # TODO: let's examine the error string explicitly.
                         print "Node kind lookup failed, marking this extern as broken."
                         broken = True
                         nodekind = None
@@ -323,7 +333,7 @@ def getExternals(revoffset = 0):
 
 def didExternalsChange(revnum):
     try:
-        text = readcall("svn diff -c %d %s" % (revnum, rootrepo), timeout=3)
+        text, errtext = readcall("svn diff -c %d %s" % (revnum, rootrepo), timeout=3)
     except TimeoutException:
         return True
     if text.find("Modified: svn:externals") != -1:
@@ -399,7 +409,7 @@ userLookup = getUserLookup(usersfile)
 #
 
 def getUrlForRepoAtRevision(repo, rev):
-    text = readcall("svn info -r %d %s" % (rev, repo), printcommand=False)
+    text, errtext = readcall("svn info -r %d %s" % (rev, repo), printcommand=False)
     text = text.splitlines()
     for line in text:
         match = re.search(r'^URL: (.*)$', line)
@@ -417,7 +427,7 @@ if checkancestry:
     for revnum in revnumbers:
          try:
             url = getUrlForRepoAtRevision(repo, revnum)
-         except subprocess.CalledProcessError: # TODO: let's examine the error string explicitly.
+         except CalledProcessError: # TODO: let's examine the error string explicitly.
             url = "Not present in repo"
          if url != previousUrl:
              print "%d:\t%s" % (revnum, url)
