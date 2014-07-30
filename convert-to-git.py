@@ -534,56 +534,35 @@ else:
 #revnumbers = xrange(testpoint, testpoint+400)
 
 
-def updateProjectRootToRevision(rev):
-    # Update project root to revision
-    if os.path.exists('.svn'):
-        retval = call("svn switch --ignore-externals --accept theirs-full -r %d %s@%d" % (rev.number, repo, rev.number))
-    else:
-        retval = call('svn co --ignore-externals -r %d %s@%d .' % (rev.number, repo, rev.number))
-    if retval != 0: # TODO: let's examine the error string explicitly.
-        thispathwasdeleted = isThisPathDeleted(repo, rev.number)
-        if thispathwasdeleted:
-            print "Oh, this path was deleted! Someone forgot how to merge... Remove everything for now."
-            deleteAllContentInCwd()
-            retval = 0
-
-    if retval != 0: # TODO: let's examine the error string explicitly.
-        # Let's try not specifying a pegrev. This will probably help in the case that the source for this object
-        # came from another location.
-        if os.path.exists('.svn'):
-            retval = call("svn switch --ignore-externals --accept theirs-full -r %d %s" % (rev.number, repo))
-        else:
-            retval = call('svn co --ignore-externals -r %d %s .' % (rev.number, repo))
-    return retval
-
-
 for revnum in revnumbers:
     print "\n-------- Replaying revision %d --------\n" % revnum
     rev = getRevision(rootrepo, revnum)
-
     print rev
-
-    thispathwasdeleted = False
-
-    retval = updateProjectRootToRevision(rev)
-    if retval != 0: # TODO: let's examine the error string explicitly.
-        # nuke it and try again, in case of conflicts.
-        deleteAllContentInCwd()
-        if os.path.exists('.svn'):
-            call("rm -fr .svn")
-        retval = updateProjectRootToRevision(rev)
     
-    if retval != 0: # TODO: let's examine the error string explicitly.
-        raise RuntimeError("svn error")
-    elif not thispathwasdeleted:
+    ignoreThisChange = False
+
+    # Update project root to revision
+    try:
+        if os.path.exists('.svn'):
+            text, errmsg = readcall("svn switch --ignore-externals --accept theirs-full -r %d %s" % (rev.number, repo), printstdout=True)
+        else:
+            text, errmsg = readcall('svn co --ignore-externals -r %d %s .' % (rev.number, repo), printstdout=True)
+    except CalledProcessError as e:
+        if e.stderr.find("Unable to find repository location") != -1:
+            print "Operative-revision ancestry has a gap here (probably caused by branching from a past revision.) Ignoring this commit."
+            ignoreThisChange = True
+        else:
+            raise
+    
+    if not ignoreThisChange:
         updateExternalsTo(rev.number)
 
-    call("git add -u")
-    call("git add --all .")
-    with open(".commitmessage", 'w') as commitmessage:
-        commitmessage.write("%s\n\nExported from %s@%s" % (rev.log, repo, rev.number))
-    call('git commit --author="%s" --date="%s" --file=.commitmessage' % (rev.user, rev.date))
-    os.remove(".commitmessage")
+        call("git add -u")
+        call("git add --all .")
+        with open(".commitmessage", 'w') as commitmessage:
+            commitmessage.write("%s\n\nExported from %s@%s" % (rev.log, repo, rev.number))
+        call('git commit --author="%s" --date="%s" --file=.commitmessage' % (rev.user, rev.date))
+        os.remove(".commitmessage")
 
     with open(".git/info/progress", 'w') as gitprogress:
         gitprogress.write(str(rev.number))
