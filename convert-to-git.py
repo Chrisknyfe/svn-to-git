@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import sys, os, shutil, subprocess, re, getopt, signal, shlex
+import sys, os, shutil, subprocess, re, getopt, signal, shlex, functools
 from collections import namedtuple
 
 #
@@ -91,17 +91,28 @@ def getUserLookup(filename):
 #
 
 class TimeoutException(Exception):
-    pass
+    def __init__(self, cmd, seconds):
+        Exception.__init__(self, cmd, seconds)
+        self.cmd = cmd
+        self.seconds = seconds
+    def __str__(self):
+        return "Command '%s' timed out after %d seconds." % (self.cmd, self.seconds)
     
-class CalledProcessError(StandardError):
-    def __init__(self, returncode, command, stdout, stderr):
-        self.returncode = returncode
-        self.command = command
+class CalledProcessError(subprocess.CalledProcessError):
+    """A subprocess.CalledProcessError that keeps stdout and stderr data separate."""
+    def __init__(self, returncode, cmd, stdout, stderr):
         self.stdout = stdout
         self.stderr = stderr
+        if not stdout:
+            stdout = ""
+        if not stderr:
+            stderr = ""
+        subprocess.CalledProcessError.__init__(self, returncode, cmd, stdout + stderr)
+    def __str__(self):
+        return subprocess.CalledProcessError.__str__(self) + ':\n%s' % self.stderr
     
-def timeoutHandler(signum, frame):
-    raise TimeoutException()
+def timeoutHandler(cmd, seconds, signum, frame):
+    raise TimeoutException(cmd, seconds)
     
 def call(cmd, timeout = None, printcommand=True):
     if printcommand:
@@ -109,15 +120,16 @@ def call(cmd, timeout = None, printcommand=True):
     args = shlex.split(cmd.encode('utf8'))
     try:
         if timeout is not None:
-            signal.signal(signal.SIGALRM, timeoutHandler)
+            handler = functools.partial(timeoutHandler, cmd, timeout)
+            signal.signal(signal.SIGALRM, handler)
             signal.alarm(timeout)
         p = subprocess.Popen(args)
         p.wait()
         if timeout is not None:
             signal.alarm(0)
-    except TimeoutException:
+    except TimeoutException as e:
         p.kill()
-        print "command timed out"
+        print e
         raise
     return p.returncode
     
@@ -127,15 +139,16 @@ def readcall(cmd, timeout = None, printcommand=True, printstdout=False, printstd
     args = shlex.split(cmd.encode('utf8'))
     try:
         if timeout is not None:
-            signal.signal(signal.SIGALRM, timeoutHandler)
+            handler = functools.partial(timeoutHandler, cmd, timeout)
+            signal.signal(signal.SIGALRM, handler)
             signal.alarm(timeout)
         p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdoutdata, stderrdata = p.communicate()
         if timeout is not None:
             signal.alarm(0)
-    except TimeoutException:
+    except TimeoutException as e:
         p.kill()
-        print "command timed out"
+        print e
         raise
     if printstdout:
         print stdoutdata
@@ -409,7 +422,7 @@ userLookup = getUserLookup(usersfile)
 #
 
 def getUrlForRepoAtRevision(repo, rev):
-    text, errtext = readcall("svn info -r %d %s" % (rev, repo), printcommand=False)
+    text, errtext = readcall("svn info -r %d %s" % (rev, repo), printcommand=False, printstderr=False)
     text = text.splitlines()
     for line in text:
         match = re.search(r'^URL: (.*)$', line)
@@ -427,8 +440,11 @@ if checkancestry:
     for revnum in revnumbers:
          try:
             url = getUrlForRepoAtRevision(repo, revnum)
-         except CalledProcessError: # TODO: let's examine the error string explicitly.
-            url = "Not present in repo"
+         except CalledProcessError as e:
+            if e.stderr.find("Unable to find repository location") != -1:
+                url = "Not present in repo"
+            else:
+                raise
          if url != previousUrl:
              print "%d:\t%s" % (revnum, url)
              previousUrl = url
