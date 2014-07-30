@@ -311,7 +311,7 @@ def getExternals(revoffset = 0):
 
 def didExternalsChange(revnum):
     try:
-        text = readcall("svn diff -c %d %s" % (revnum, rootrepo), timeout=30)
+        text = readcall("svn diff -c %d %s" % (revnum, rootrepo), timeout=3)
     except TimeoutException:
         return True
     if text.find("Modified: svn:externals") != -1:
