@@ -143,21 +143,39 @@ def getRevision(repo, rev):
 # Info queries
 # 
 
-def getUrl(revnum):
-    text = readcall("svn info -r %d" % (revnum))
+
+def getRevisionInCwd():
+    text = readcall("svn info")
+    text = text.splitlines()
+    for line in text:
+        match = re.search(r'^Revision: (.*)$', line)
+        if match:
+            return int(match.groups()[0])
+    raise ValueError("No Revision found in 'svn info'")
+
+def getUrlInCwd():
+    text = readcall("svn info")
     text = text.splitlines()
     for line in text:
         match = re.search(r'^URL: (.*)$', line)
         if match:
             return match.groups()[0]
+    raise ValueError("No URL found in 'svn info'")
 
-def getNodeKindForUrl(url, revnum):
-    text = readcall("svn info -r %d %s@%d" % (revnum, url, revnum))
+def getNodeKindForUrl(url, rev, pegrev):
+    assert rev != None or pegrev != None
+    if rev == None:
+        text = readcall("svn info %s@%d" % (url, pegrev))
+    elif pegrev == None:
+        text = readcall("svn info -r %d %s" % (rev, url))
+    else:
+        text = readcall("svn info -r %d %s@%d" % (rev, url, pegrev))
     text = text.splitlines()
     for line in text:
         match = re.search(r'^Node Kind: (.*)$', line)
         if match:
             return match.groups()[0]
+    raise ValueError("No Node Kind found in 'svn info'")
 
 def isThisPathDeleted(url, revnum):
     text = readcall("svn log -v -r %d %s" % (revnum, rootrepo))
@@ -177,11 +195,9 @@ def isThisPathDeleted(url, revnum):
 
 Extern = namedtuple("Extern", ["object", "url", "rev", "pegrev", "isdirectory", "broken"])
 
-def getExternals(revnum):
-    # TODO: What we actually need is the revision number of the current directory.
-    # If we're doing this recurisvely, we might be inside an external already
-    # and the "global" revision number might not apply here if we specify an
-    # extern rev or pegrev in the parent extern.
+def getExternals(revoffset = 0):
+    revnum = getRevisionInCwd() + revoffset
+
     text = readcall("svn propget svn:externals -r %d -R" % (revnum))
     text = text.splitlines()
 
@@ -190,11 +206,12 @@ def getExternals(revnum):
         tokens = line.split()
         if tokens:
             try:
+                # Parse the parent directory
                 if tokens[1] == "-":
                     currentParentDir = tokens[0]
                     if re.search(r'^.*://', currentParentDir):
                         # Great, they gave us a URL when we needed a relative path. Let's remake the relative path.
-                        url = getUrl(revnum)
+                        url = getUrlInCwd()
                         currentParentDir = currentParentDir.replace(url, "")
                         if currentParentDir[0] == '/':
                             currentParentDir = currentParentDir[1:]
@@ -209,7 +226,8 @@ def getExternals(revnum):
                     externPegrev = None
                     while len(tokens):
                         token = tokens.pop(0)
-                        if re.search(r'^.+://', token): # URL
+                        # URL
+                        if re.search(r'^.+://', token):
                             match = re.search(r'^(.+)@(.+)', token)
                             if match:
                                 externUrl = match.groups()[0]
@@ -217,33 +235,36 @@ def getExternals(revnum):
                             else:
                                 externUrl = token
                             continue
-
-                        match = re.search(r'^-r(.+)', token) # -rREVNUM
+                        # -rREVNUM
+                        match = re.search(r'^-r(.+)', token)
                         if match:
                             externRev = int(match.groups()[0])
                             continue
-
-                        if token == '-r': # -r REVNUM
+                        # -r REVNUM
+                        if token == '-r':
                             nexttoken = tokens.pop(0)
                             externRev = int(nexttoken)
                             continue
-
-                        childObject = currentParentDir + "/" + token # local path
-
+                        # local path
+                        childObject = currentParentDir + "/" + token
                     assert externUrl != None and childObject != None
 
                     # Doctor the URL if we're using a local mirror of a remote repo
                     for remoterepo in remoterepos:
                         externUrl = externUrl.replace(remoterepo, rootrepo)
 
+                    # Get the node kind for this extern, or find out if the extern even exists.
                     broken = False
                     try:
-                        nodekind = getNodeKindForUrl(externUrl, revnum)
+                        noderev = externRev
+                        nodepegrev = externPegrev
+                        if noderev == None and externPegrev == None:
+                            noderev = revnum
+                        nodekind = getNodeKindForUrl(externUrl, rev, pegrev)
                     except:
                         broken = True
                         nodekind = None
-
-
+                        
                     yield Extern(   object=childObject,
                                     url=externUrl,
                                     rev = externRev,
@@ -279,11 +300,11 @@ def updateExternalsTo(revnum):
     # Make sure removed externals don't get kept.
     if didExternalsChange(revnum):
         print "Externals changed, clearing externals."
-        for ex in getExternals(revnum-1):
+        for ex in getExternals(-1):
             removeExternal(ex)
 
     # Update all externals recursively.
-    for ex in getExternals(revnum):
+    for ex in getExternals():
         print "Extern:", ex
 
         if ex.broken:
