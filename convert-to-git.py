@@ -226,6 +226,21 @@ def getUrlInCwd():
             return match.groups()[0]
     raise ValueError("No URL found in 'svn info'")
 
+def getUrlForRepoAtRevision(repo, rev=None, peg=None):
+    assert rev != None or peg != None
+    if rev == None:
+        text, errtext = readcall("svn info %s@%d" % (repo, peg), printcommand=False, printstderr=False)
+    elif peg == None:
+        text, errtext = readcall("svn info -r %d %s" % (rev, repo), printcommand=False, printstderr=False)
+    else:
+        text, errtext = readcall("svn info -r %d %s@%d" % (rev, repo, peg), printcommand=False, printstderr=False)
+    text = text.splitlines()
+    for line in text:
+        match = re.search(r'^URL: (.*)$', line)
+        if match:
+            return match.groups()[0]
+    raise ValueError("No URL found in 'svn info'")
+
 
 def getNodeKindForUrl(url, rev, pegrev):
     text, errtext = readcall("svn info -r %d %s@%d" % (rev, url, pegrev))
@@ -421,14 +436,6 @@ userLookup = getUserLookup(usersfile)
 # Debug: check ancestry
 #
 
-def getUrlForRepoAtRevision(repo, rev):
-    text, errtext = readcall("svn info -r %d %s" % (rev, repo), printcommand=False, printstderr=False)
-    text = text.splitlines()
-    for line in text:
-        match = re.search(r'^URL: (.*)$', line)
-        if match:
-            return match.groups()[0]
-    raise ValueError("No URL found in 'svn info'")
 
 if checkancestry:
     startrevnum = 0
@@ -436,18 +443,41 @@ if checkancestry:
     revnumbers = range(startrevnum, lastrev.number + 1)
     print "Ancestry for %s from %d to %d" % (repo, lastrev.number, startrevnum)
     
-    previousUrl = ""
+    prevRevUrl = ""
+    prevPegUrl = ""
     for revnum in revnumbers:
-         try:
-            url = getUrlForRepoAtRevision(repo, revnum)
-         except CalledProcessError as e:
-            if e.stderr.find("Unable to find repository location") != -1:
+        printInfo = False
+        # Rev only
+        try:
+            url = getUrlForRepoAtRevision(repo, rev=revnum)
+        except CalledProcessError as e:
+            if e.stderr.find("Unable to find repository location") != -1\
+               or e.stderr.find("non-existent in revision") != -1:
                 url = "Not present in repo"
             else:
                 raise
-         if url != previousUrl:
-             print "%d:\t%s" % (revnum, url)
-             previousUrl = url
+        if url != prevRevUrl:
+            print "####\t%d r:\t%s" % (revnum, url)
+            prevRevUrl = url
+            printInfo = True
+            
+        # Peg only
+        try:
+            url = getUrlForRepoAtRevision(repo, peg=revnum)
+        except CalledProcessError as e:
+            if e.stderr.find("Unable to find repository location") != -1\
+               or e.stderr.find("non-existent in revision") != -1:
+                url = "Not present in repo"
+            else:
+                raise
+        if url != prevPegUrl:
+            print "####\t%d p:\t%s" % (revnum, url)
+            prevPegUrl = url
+            printInfo = True
+        
+        # Print info for relevant changes
+        if printInfo:
+            call("svn log -r %d %s" % (revnum, rootrepo), printcommand=False)
     exit()
     
 
