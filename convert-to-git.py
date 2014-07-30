@@ -197,13 +197,7 @@ def getUrlInCwd():
     raise ValueError("No URL found in 'svn info'")
 
 def getNodeKindForUrl(url, rev, pegrev):
-    assert rev != None or pegrev != None
-    if rev == None:
-        text = readcall("svn info %s@%d" % (url, pegrev))
-    elif pegrev == None:
-        text = readcall("svn info -r %d %s" % (rev, url))
-    else:
-        text = readcall("svn info -r %d %s@%d" % (rev, url, pegrev))
+    text = readcall("svn info -r %d %s@%d" % (rev, url, pegrev))
     text = text.splitlines()
     for line in text:
         match = re.search(r'^Node Kind: (.*)$', line)
@@ -292,10 +286,11 @@ def getExternals(revoffset = 0):
                     try:
                         noderev = externRev
                         nodepegrev = externPegrev
-                        if noderev == None and externPegrev == None:
-                            noderev = revnum
-                        nodekind = getNodeKindForUrl(externUrl, rev, pegrev)
-                    except:
+                        noderev = externRev if externRev != None else revnum
+                        nodepegrev = externPegrev if externPegrev != None else noderev
+                        nodekind = getNodeKindForUrl(externUrl, noderev, nodepegrev)
+                    except subprocess.CalledProcessError as e: 
+                        print "Node kind lookup failed, marking this extern as broken."
                         broken = True
                         nodekind = None
                         
@@ -431,24 +426,19 @@ else:
 # revision 2852, extern/crc is removed. # handled
 # revision 3126, BandageCommServer can't be found. WTF? It's there!
 # revision 3384, BandageCommServer was removed.
-# revision 3385, BandageCommServer was brought back.
+# revision 3385, BandageCommServer was brought back. # need to fix tree conflict here
 # revision 5094, specified '-r REV URL@PEGREV' extern form
 # revision 9000, sensor_stream has a file extern "vc_queue.h" # handled
 
-#testpoint = 9000
-#revnumbers = xrange(testpoint, testpoint+5)
+#testpoint = 3000
+#revnumbers = xrange(testpoint, lastrev.number)
+#revnumbers = xrange(testpoint, testpoint+400)
 
-for revnum in revnumbers:
-    print "\n-------- Replaying revision %d --------\n" % revnum
-    rev = getRevision(rootrepo, revnum)
 
-    print rev
-
-    thispathwasdeleted = False
-
+def updateProjectRootToRevision(rev):
     # Update project root to revision
     if os.path.exists('.svn'):
-        retval = call("svn switch --ignore-externals -r %d %s@%d" % (rev.number, repo, rev.number))
+        retval = call("svn switch --ignore-externals --accept theirs-full -r %d %s@%d" % (rev.number, repo, rev.number))
     else:
         retval = call('svn co --ignore-externals -r %d %s@%d .' % (rev.number, repo, rev.number))
     if retval != 0:
@@ -462,10 +452,28 @@ for revnum in revnumbers:
         # Let's try not specifying a pegrev. This will probably help in the case that the source for this object
         # came from another location.
         if os.path.exists('.svn'):
-            retval = call("svn switch --ignore-externals -r %d %s" % (rev.number, repo))
+            retval = call("svn switch --ignore-externals --accept theirs-full -r %d %s" % (rev.number, repo))
         else:
             retval = call('svn co --ignore-externals -r %d %s .' % (rev.number, repo))
+    return retval
 
+
+for revnum in revnumbers:
+    print "\n-------- Replaying revision %d --------\n" % revnum
+    rev = getRevision(rootrepo, revnum)
+
+    print rev
+
+    thispathwasdeleted = False
+
+    retval = updateProjectRootToRevision(rev)
+    if retval != 0:
+        # nuke it and try again, in case of conflicts.
+        deleteAllContentInCwd()
+        if os.path.exists('.svn'):
+            call("rm -fr .svn")
+        retval = updateProjectRootToRevision(rev)
+    
     if retval != 0:
         raise RuntimeError("svn error")
     elif not thispathwasdeleted:
