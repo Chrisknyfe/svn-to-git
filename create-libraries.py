@@ -57,12 +57,41 @@ if not os.path.exists('libraries_build'):
 os.chdir('libraries_build')
 rootleveldir = os.getcwd()
 
+for modname, url in libraries.iteritems():
+    os.chdir(rootleveldir)
+    dirname = os.path.abspath("cloned_" + modname)
+    outputdirname = os.path.abspath("filtered_" + modname)
+    
+    # Export each library from the svn repo
+    print "\n-- Exporting library %s --\n" % modname
+    cmdstr = "%s --no-externals --root %s --repo %s --users %s" % (converttogit, rootrepo, url, gitusers)
+    for remote in remoterepos:
+        cmdstr += " --remote %s" % remote
+    cmdstr += " %s" % dirname
+    retval = call(cmdstr)
+    if retval != 0:
+        raise RuntimeError("convert-to-git error")
+        
+    # Copy the exported library somewhere else to be filtered.
+    if os.path.exists(outputdirname):
+        call("rm -rf %s" % outputdirname)
+    call("cp -R %s %s" % (dirname, outputdirname))
+
+    # Filter each library's commits into a subfolder
+    print "\n-- Filtering library %s --\n" % modname
+    os.chdir(outputdirname)
+    retval = call("%s %s" % (gitfilterprefix, modname))
+    if retval != 0:
+        raise RuntimeError("git-filter-prefix error")
+        
+        
 # Make a "libraries" git repo that we'll fill with these libraries
-
-librariesrepo = os.path.abspath('libraries')
-
-if not os.path.exists(librariesrepo):
-    os.mkdir(librariesrepo)
+print "\n-- Creating \"libraries\" repo --\n"
+librariesrepo = os.path.abspath('libraries') 
+if os.path.exists(librariesrepo):
+    call("rm -rf %s" % librariesrepo)
+    
+os.mkdir(librariesrepo)
 os.chdir(librariesrepo)
 call("git init")
 with open(".gitignore", 'a') as gitignore:
@@ -70,33 +99,24 @@ with open(".gitignore", 'a') as gitignore:
 call("git add .gitignore")
 call("git commit -m 'Create libraries repo'")
 
+# Pull each library
 for modname, url in libraries.iteritems():
+    print "\n-- Pulling library %s --\n" % modname
     os.chdir(rootleveldir)
-    dirname = os.path.abspath("cloned_" + modname)
-    #retval = call("git svn clone -A %s %s %s" % (gitusers, rootrepo + url, dirname)))
-    
-    cmdstr = "%s --no-externals --root %s --repo %s --users %s" % (converttogit, rootrepo, url, gitusers)
-    for remote in remoterepos:
-        cmdstr += " --remote %s" % remote
-    cmdstr += " %s" % dirname
-    retval = call(cmdstr)
-    exit()
-    if retval != 0:
-        raise RuntimeError("git svn clone error")
-        
-    os.chdir(dirname)
-    retval = call("%s %s" % (gitfilterprefix, modname))
-    if retval != 0:
-        raise RuntimeError("git-filter-prefix error")
-        
+    dirname = os.path.abspath("filtered_" + modname)
     os.chdir(librariesrepo)
     retval = call("git pull --no-edit %s" % (dirname))
     if retval != 0:
         raise RuntimeError("git pull error")
-    
+
+# Merge the git repo
+print "\n-- Sorting and Filtering \"libraries\" repo --\n"
 os.chdir(librariesrepo)
 retval = call(gitcherrysort)
 if retval != 0:
     raise RuntimeError("git-cherry-sort error")
+retval = call("git filter-branch -f --env-filter 'GIT_COMMITTER_DATE=$GIT_AUTHOR_DATE; export GIT_COMMITTER_DATE'")
+if retval != 0:
+    raise RuntimeError("git-filter-branch error")
         
         
