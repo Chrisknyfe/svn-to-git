@@ -192,17 +192,17 @@ def parseLogEntry(intext):
         raise RuntimeError("Not a valid log from 'svn log', cannot parse:\n%s" % text[0])
 
 def getFirstRevision(repo):
-    text, errtext = readcall("svn log -r0:HEAD --limit 1 %s" % repo)
+    text, errtext = readcall("svn log -r0:HEAD --limit 1 %s" % repo, printcommand=False, printstdout=False, printstderr=False)
     revision = parseLogEntry(text)
     return revision
 
 def getLastRevision(repo):
-    text, errtext = readcall("svn log --limit 1 %s" % repo)
+    text, errtext = readcall("svn log --limit 1 %s" % repo, printcommand=False, printstdout=False, printstderr=False)
     revision = parseLogEntry(text)
     return revision
 
 def getRevision(rev):
-    text, errtext = readcall("svn log -r %d --limit 1 %s" % (rev, rootrepo) )
+    text, errtext = readcall("svn log -r %d --limit 1 %s" % (rev, rootrepo), printcommand=False, printstdout=False, printstderr=False)
     revision = parseLogEntry(text)
     return revision
 
@@ -212,7 +212,7 @@ def getRevision(rev):
 
 
 def getRevisionInCwd():
-    text, errtext = readcall("svn info")
+    text, errtext = readcall("svn info", printcommand=False, printstdout=False, printstderr=False)
     text = text.splitlines()
     for line in text:
         match = re.search(r'^Revision: (.*)$', line)
@@ -221,7 +221,7 @@ def getRevisionInCwd():
     raise ValueError("No Revision found in 'svn info'")
 
 def getUrlInCwd():
-    text, errtext = readcall("svn info")
+    text, errtext = readcall("svn info", printcommand=False, printstdout=False, printstderr=False)
     text = text.splitlines()
     for line in text:
         match = re.search(r'^URL: (.*)$', line)
@@ -232,11 +232,11 @@ def getUrlInCwd():
 def getUrlForRepoAtRevision(repo, rev=None, peg=None):
     assert rev != None or peg != None
     if rev == None:
-        text, errtext = readcall("svn info %s@%d" % (repo, peg), printcommand=False, printstderr=False)
+        text, errtext = readcall("svn info %s@%d" % (repo, peg), printcommand=False, printstdout=False, printstderr=False)
     elif peg == None:
-        text, errtext = readcall("svn info -r %d %s" % (rev, repo), printcommand=False, printstderr=False)
+        text, errtext = readcall("svn info -r %d %s" % (rev, repo), printcommand=False, printstdout=False, printstderr=False)
     else:
-        text, errtext = readcall("svn info -r %d %s@%d" % (rev, repo, peg), printcommand=False, printstderr=False)
+        text, errtext = readcall("svn info -r %d %s@%d" % (rev, repo, peg), printcommand=False, printstdout=False, printstderr=False)
     text = text.splitlines()
     for line in text:
         match = re.search(r'^URL: (.*)$', line)
@@ -246,7 +246,7 @@ def getUrlForRepoAtRevision(repo, rev=None, peg=None):
 
 
 def getNodeKindForUrl(url, rev, pegrev):
-    text, errtext = readcall("svn info -r %d %s@%d" % (rev, url, pegrev))
+    text, errtext = readcall("svn info -r %d %s@%d" % (rev, url, pegrev), printcommand=False, printstdout=False, printstderr=False)
     text = text.splitlines()
     for line in text:
         match = re.search(r'^Node Kind: (.*)$', line)
@@ -255,7 +255,7 @@ def getNodeKindForUrl(url, rev, pegrev):
     raise ValueError("No Node Kind found in 'svn info'")
 
 def isThisPathDeleted(url, revnum):
-    text, errtext = readcall("svn log -v -r %d %s" % (revnum, rootrepo))
+    text, errtext = readcall("svn log -v -r %d %s" % (revnum, rootrepo), printcommand=False, printstdout=False, printstderr=False)
     text = text.splitlines()
     for line in text:
         match = re.search(r'^ *D(.*)', line)
@@ -274,7 +274,7 @@ Extern = namedtuple("Extern", ["object", "url", "rev", "pegrev", "isdirectory", 
 
 def getExternals(toplevelrevnum):
     revnum = getRevisionInCwd()
-    text, errtext = readcall("svn propget svn:externals -r %d -R" % (revnum))
+    text, errtext = readcall("svn propget svn:externals -r %d -R" % (revnum), printcommand=False, printstdout=False, printstderr=False)
     text = text.splitlines()
 
     currentParentDir = None
@@ -348,7 +348,7 @@ def getExternals(toplevelrevnum):
                         nodekind = getNodeKindForUrl(externUrl, externRev, externPegrev)
                     except CalledProcessError as e:
                         if e.stderr.find("non-existent in revision") != -1:
-                            print "Extern can't be found at this location."
+                            print "WARNING: Extern can't be found at this location."
                         else:
                             raise
                         broken = True
@@ -373,7 +373,7 @@ def getExternals(toplevelrevnum):
 
 def didExternalsChange(revnum):
     try:
-        text, errtext = readcall("svn diff -c %d %s" % (revnum, rootrepo), timeout=3)
+        text, errtext = readcall("svn diff -c %d %s" % (revnum, rootrepo), timeout=10, printcommand=False, printstdout=False, printstderr=False)
     except TimeoutException:
         return True
     if text.find("Modified: svn:externals") != -1:
@@ -389,11 +389,9 @@ def removeExternal(ex):
             os.remove(ex.object)
 
 def updateExternalsTo(revnum):
+    """Update all externals recursively."""
     cwd = os.getcwd()
-    
-    # Update all externals recursively.
     for ex in getExternals(revnum):
-        print "Extern:", ex
         if ex.broken:
             removeExternal(ex)
         else:
@@ -404,27 +402,35 @@ def updateExternalsTo(revnum):
                 shouldSwitch = True
                 if not os.path.exists( os.path.join(ex.object, '.svn') ):
                     try:
-                        text, errtext = readcall("svn co --ignore-externals -r %d %s@%d %s" % (ex.rev, ex.url, ex.pegrev, ex.object), printstdout=True)
+                        text, errtext = readcall("svn co --ignore-externals -r %d %s@%d %s" % (ex.rev, ex.url, ex.pegrev, ex.object), printcommand=False, printstdout=True)
                         shouldSwitch = False
                     except CalledProcessError as e:
                         if e.stderr.find("is already a working copy for a different URL") != -1:
                             print e
-                            print "Caught working copy error, let's try switching"
+                            print "WARNING: Caught working copy / extern conflict, let's try switching"
                             shouldSwitch = True
                         else:
                             raise
                     
                 if shouldSwitch:   
-                    text, errtext = readcall("svn switch --ignore-externals --ignore-ancestry -r %d %s@%d %s" % (ex.rev, ex.url, ex.pegrev, ex.object), printstdout=True)                   
+                    text, errtext = readcall("svn switch --ignore-externals --ignore-ancestry -r %d %s@%d %s" % (ex.rev, ex.url, ex.pegrev, ex.object), printcommand=False, printstdout=False, printstderr=False)
+                    if not text.strip().startswith("At revision"):
+                        print text
+                        print >> sys.stderr, errtext                   
                     
                 os.chdir(ex.object)
                 updateExternalsTo(revnum)
                 os.chdir(cwd)
             else:
+                printexport = False
                 if os.path.exists(ex.object) and not os.path.isdir(ex.object):
                     os.remove(ex.object)
-                if call("svn export -r %d %s@%d %s" % (ex.rev, ex.url, ex.pegrev, ex.object))!= 0:
-                    raise RuntimeError("svn error") # TODO: let's report this error explicitly.
+                else:
+                    printexport = True # only print the export if it wasn't here to begin with.
+                text, errtext = readcall("svn export -r %d %s@%d %s" % (ex.rev, ex.url, ex.pegrev, ex.object), printcommand=False, printstdout=False, printstderr=False)
+                if printexport:
+                    print text
+                    print >> sys.stderr, errtext
 
 #
 # Helper Functions
@@ -453,7 +459,7 @@ if checkancestry:
     startrevnum = 0
     lastrev = getLastRevision(repo)
     revnumbers = range(startrevnum, lastrev.number + 1)
-    print "Ancestry for %s from %d to %d" % (repo, lastrev.number, startrevnum)
+    print "-- Ancestry for %s from %d to %d --" % (repo, lastrev.number, startrevnum)
     
     prevRevUrl = ""
     prevPegUrl = ""
@@ -491,6 +497,8 @@ if checkancestry:
         if printInfo:
             call("svn log -r %d %s" % (revnum, rootrepo), printcommand=False)
     exit()
+
+print "-- Converting %s to %s --" % (repo, targetdir)
     
 
 #
@@ -502,7 +510,7 @@ if not os.path.exists(targetdir):
 os.chdir(targetdir)
 
 if not os.path.exists('.git'): 
-    call("git init")
+    call("git init", printcommand=False)
     with open(".git/info/exclude", 'a') as gitignore:
         gitignore.write("**/.svn/**\n")
         gitignore.write(".commitmessage\n")
@@ -518,12 +526,12 @@ if os.path.exists('.git/info/progress'):
         startrevnum = int(gitprogress.read())
     lastrev = getLastRevision(repo)
     revnumbers = xrange(startrevnum, lastrev.number + 1)
-    print "Continuing from rev %d to rev %d." % (startrevnum ,lastrev.number)
+    print "-- Continuing from rev %d to rev %d --" % (startrevnum ,lastrev.number)
 else:
     firstrev = getFirstRevision(repo)
     lastrev = getLastRevision(repo)
     revnumbers = xrange(firstrev.number, lastrev.number + 1)
-    print "Starting from scratch from rev %d to rev %d" % (firstrev.number, lastrev.number)
+    print "-- Starting from scratch from rev %d to rev %d --" % (firstrev.number, lastrev.number)
 
 
 #
@@ -541,15 +549,13 @@ else:
 # revision 5094, specified '-r REV URL@PEGREV' extern form
 # revision 9000, sensor_stream has a file extern "vc_queue.h" # handled
 
-#testpoint = 3000
+#testpoint = 9000
 #revnumbers = xrange(testpoint, lastrev.number)
 #revnumbers = xrange(testpoint, testpoint+400)
 
-
 for revnum in revnumbers:
-    print "\n-------- Replaying revision %d --------\n" % revnum
+    print "-- Replaying revision %d --" % revnum
     rev = getRevision(revnum)
-    print rev
     
     ignoreThisChange = False
     
@@ -557,18 +563,23 @@ for revnum in revnumbers:
     # This way, we don't have to look into the history to figure out what to delete.
     # Trust me this will be faster.
     if exportexternals and didExternalsChange(revnum):
-        print "Externals changed, nuking the entire repo."
+        print "WARNING: Externals changed, nuking the entire repo."
         deleteAllSvnContentInCwd()
 
     # Update project root to revision
     try:
         if os.path.exists('.svn'):
-            text, errmsg = readcall("svn switch --ignore-externals --accept theirs-full -r %d %s" % (rev.number, repo), printstdout=True)
+            text, errtext = readcall("svn switch --ignore-externals --accept theirs-full -r %d %s" % (rev.number, repo), printcommand=False, printstdout=False, printstderr=False)
+            if not text.strip().startswith("At revision"):
+                print text
+                print >> sys.stderr, errtext
         else:
-            text, errmsg = readcall('svn co --ignore-externals -r %d %s .' % (rev.number, repo), printstdout=True)
+            text, errtext = readcall('svn co --ignore-externals -r %d %s .' % (rev.number, repo), printcommand=False, printstdout=True)
+            
+        
     except CalledProcessError as e:
         if e.stderr.find("Unable to find repository location") != -1:
-            print "Operative-revision ancestry has a gap here (probably caused by branching from a past revision.) Ignoring this commit."
+            print "WARNING: Operative-revision ancestry has a gap here (probably caused by branching from a past revision.) Ignoring this commit."
             ignoreThisChange = True
         else:
             raise
@@ -577,16 +588,28 @@ for revnum in revnumbers:
         if exportexternals:
             updateExternalsTo(rev.number)
 
-        call("git add -u")
-        call("git add --all .")
+        text, errtext = readcall("git add -u", printcommand=False, printstdout=False, printstderr=False)
+        text, errtext = readcall("git add --all .", printcommand=False, printstdout=False, printstderr=False)
         with open(".commitmessage", 'w') as commitmessage:
             commitmessage.write("%s\n\nExported from rev %d %s" % (rev.log, rev.number, repo))
-        call('git commit --author="%s" --date="%s" --file=.commitmessage' % (rev.user, rev.date))
+            
+        try:
+            text, errtext = readcall('git commit --author="%s" --date="%s" --file=.commitmessage' % (rev.user, rev.date), printcommand=False, printstdout=False, printstderr=False)
+            print text
+            print >> sys.stderr, errtext
+        except CalledProcessError as e:
+            if e.stdout.find("nothing to commit") != -1:
+                pass
+            else:
+                raise
+        
         os.remove(".commitmessage")
 
     with open(".git/info/progress", 'w') as gitprogress:
         gitprogress.write(str(rev.number))
 
-# Filter the history so its dates are correct.
-call("git filter-branch -f --env-filter 'GIT_COMMITTER_DATE=$GIT_AUTHOR_DATE; export GIT_COMMITTER_DATE'")
+print "-- Correcting commit datestamps --"
+call("git filter-branch -f --env-filter 'GIT_COMMITTER_DATE=$GIT_AUTHOR_DATE; export GIT_COMMITTER_DATE'", printcommand=False)
+
+print "-- Completed conversion from SVN repo to flattened GIT repo --\n"
 
