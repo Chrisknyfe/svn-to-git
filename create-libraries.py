@@ -59,7 +59,7 @@ rootleveldir = os.getcwd()
 
 for modname, url in libraries.iteritems():
     os.chdir(rootleveldir)
-    dirname = os.path.abspath("cloned_" + modname)
+    dirname = os.path.abspath("export_" + modname)
     outputdirname = os.path.abspath("filtered_" + modname)
     
     # Export each library from the svn repo
