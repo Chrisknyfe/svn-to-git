@@ -397,12 +397,23 @@ def updateExternalsTo(revnum):
             if ex.isdirectory:
                 if not os.path.exists(ex.object):
                     os.makedirs(ex.object)
-                if os.path.exists( os.path.join(ex.object, '.svn') ):
-                    retval = call("svn switch --ignore-externals --ignore-ancestry -r %d %s@%d %s" % (ex.rev, ex.url, ex.pegrev, ex.object))
-                else:
-                    retval = call("svn co --ignore-externals -r %d %s@%d %s" % (ex.rev, ex.url, ex.pegrev, ex.object))
-                if retval != 0:
-                    raise RuntimeError("svn error") # TODO: let's report this error explicitly.
+                
+                shouldSwitch = True
+                if not os.path.exists( os.path.join(ex.object, '.svn') ):
+                    try:
+                        text, errtext = readcall("svn co --ignore-externals -r %d %s@%d %s" % (ex.rev, ex.url, ex.pegrev, ex.object), printstdout=True)
+                        shouldSwitch = False
+                    except CalledProcessError as e:
+                        if e.stderr.find("is already a working copy for a different URL") != -1:
+                            print e
+                            print "Caught working copy error, let's try switching"
+                            shouldSwitch = True
+                        else:
+                            raise
+                    
+                if shouldSwitch:   
+                    text, errtext = readcall("svn switch --ignore-externals --ignore-ancestry -r %d %s@%d %s" % (ex.rev, ex.url, ex.pegrev, ex.object), printstdout=True)                   
+                    
                 os.chdir(ex.object)
                 updateExternalsTo(revnum)
                 os.chdir(cwd)
