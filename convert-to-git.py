@@ -32,7 +32,7 @@ def usagequit(message):
 
 def parseOptions():
     try:
-        opts, args = getopt.getopt(sys.argv[1:], '', ['root=', 'repo=', 'remote=', 'users=', 'ancestry'])
+        opts, args = getopt.getopt(sys.argv[1:], '', ['root=', 'repo=', 'remote=', 'users=', 'ancestry', 'no-externals'])
     except getopt.GetoptError as err:
         usagequit(str(err))
 
@@ -49,6 +49,7 @@ def parseOptions():
     remoterepos = []
     usersfile = None
     checkancestry = False
+    exportexternals = True
     for o, a in opts:
         if o == '--root':
             rootrepo = a
@@ -60,6 +61,8 @@ def parseOptions():
             usersfile = a
         elif o == '--ancestry':
             checkancestry = True
+        elif o == '--no-externals':
+            exportexternals = False
             
     if rootrepo == None:
         usagequit("Please specify a root repository with --root")
@@ -68,7 +71,7 @@ def parseOptions():
     if usersfile == None:
         usersfile = 'gitusers.txt'
     repo = rootrepo + repo
-    return rootrepo, repo, remoterepos, targetdir, usersfile, checkancestry
+    return rootrepo, repo, remoterepos, targetdir, usersfile, checkancestry, exportexternals
 
 def getUserLookup(filename):
     userLookup = {}
@@ -438,7 +441,7 @@ def deleteAllSvnContentInCwd():
 # Parse input parameters
 #      
             
-rootrepo, repo, remoterepos, targetdir, usersfile, checkancestry = parseOptions()
+rootrepo, repo, remoterepos, targetdir, usersfile, checkancestry, exportexternals = parseOptions()
 userLookup = getUserLookup(usersfile)
 
 #
@@ -553,7 +556,7 @@ for revnum in revnumbers:
     # If any externals change, nuke the entire repo and get the externals fresh.
     # This way, we don't have to look into the history to figure out what to delete.
     # Trust me this will be faster.
-    if didExternalsChange(revnum):
+    if exportexternals and didExternalsChange(revnum):
         print "Externals changed, nuking the entire repo."
         deleteAllSvnContentInCwd()
 
@@ -571,12 +574,13 @@ for revnum in revnumbers:
             raise
     
     if not ignoreThisChange:
-        updateExternalsTo(rev.number)
+        if exportexternals:
+            updateExternalsTo(rev.number)
 
         call("git add -u")
         call("git add --all .")
         with open(".commitmessage", 'w') as commitmessage:
-            commitmessage.write("%s\n\nExported from %s@%s" % (rev.log, repo, rev.number))
+            commitmessage.write("%s\n\nExported from rev %d %s" % (rev.log, rev.number, repo))
         call('git commit --author="%s" --date="%s" --file=.commitmessage' % (rev.user, rev.date))
         os.remove(".commitmessage")
 
