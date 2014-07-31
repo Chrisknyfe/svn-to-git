@@ -553,6 +553,7 @@ else:
 #revnumbers = xrange(testpoint, lastrev.number)
 #revnumbers = xrange(testpoint, testpoint+400)
 
+deleteAllSvnContentInCwd()
 for revnum in revnumbers:
     print "-- Replaying revision %d --" % revnum
     rev = getRevision(revnum)
