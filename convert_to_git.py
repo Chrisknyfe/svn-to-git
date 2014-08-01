@@ -495,7 +495,7 @@ if checkancestry:
         
         # Print info for relevant changes
         if printInfo:
-            call("svn log -r %d %s" % (revnum, rootrepo), printcommand=False)
+            text, errtext = readcall("svn log -r %d %s" % (revnum, rootrepo), printcommand=False, printstdout=True, printstderr=False)
     exit()
 
 print "-- Converting %s to %s --" % (repo, targetdir)
