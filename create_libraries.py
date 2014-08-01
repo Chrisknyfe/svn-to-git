@@ -2,8 +2,7 @@
 
 # Clone all of our SVN projects to git repos, then merge them into a "libraries" git repo.
 
-import sys, os, shutil, subprocess, re, getopt, signal, shlex, functools
-from collections import namedtuple
+import os, subprocess, shlex
 
 def call(cmd):
     print cmd
