@@ -99,34 +99,13 @@ def createlibraries(    rootrepo,
 if __name__ == '__main__':
     rootrepo = "file:///home/chrisknyfe/migration/localsvn"
 
-    remoterepos = [ "https://pl3.projectlocker.com/Vigilo/orion/svn",
-                    "https://equity3.projectlocker.com/Vigilo/orion/svn",
-                    ]
-
     libraries= {
-                "common":                   "/trunk/src/sensory/Libs/common/dev/common/",
-                "dsdef_pkt":                "/trunk/src/sensory/Libs/dsdef_pkt/",
-                "biosensor_algorithms":     "/trunk/src/sensory/Libs/biosensor_algorithms/dev/implementation/",
-                "openssl":                  "/trunk/src/sensory/Libs/external/openssl/",
-                "yajl":                     "/trunk/src/sensory/Libs/external/yajl/",
-                "fw_bundle":                "/trunk/src/sensory/Libs/fw_bundle/dev/fw_bundle/",
-                "rslib":                    "/trunk/src/sensory/Libs/rslib/dev/rslib/",
-                "sensor_stream":            "/trunk/src/sensory/Libs/sensor_stream/dev/sensor_stream/",
-                "ss_pkt_gen":               "/trunk/src/sensory/Libs/ss_pkt_gen/dev/ss_pkt_gen/",
-                "store_forward":            "/trunk/src/sensory/Libs/store_forward/dev/",
-                "vc_auth":                  "/trunk/src/sensory/Libs/vc_auth/dev/vc_auth/",
-                "vc_cfg":                   "/trunk/src/sensory/Libs/vc_cfg/dev/",
-                "vc_cmd":                   "/trunk/src/sensory/Libs/vc_cmd/dev/vc_cmd/",
-                "vc_crypto":                "/trunk/src/sensory/Libs/vc_crypto/dev/vc_crypto/",
-                "vc_decomp":                "/trunk/src/sensory/Libs/vc_decomp/",
-                "vc_relay_core":            "/trunk/src/sensory/Libs/vc_relay_core/",
-                "vc_sleep":                 "/trunk/src/sensory/Libs/vc_sleep/",
-                "vc_slp":                   "/trunk/src/sensory/Libs/vc_slp/dev/vc_slp/",
-                "vc_timer":                 "/trunk/src/sensory/Libs/vc_timer/dev/vc_timer/",
-                "vcpp":                     "/trunk/src/sensory/Libs/vcpp/dev/vcpp/",
-                "vcsensorstoolbox":         "/trunk/src/sensory/Tools/VCSensorsToolbox/",
+                "common":                   "/trunk/src/common/",
+                "algorithms":               "/trunk/src/algorithms/",
+                "packet_protocol":          "/trunk/src/packet_protocol/",
+                "toolbox":                  "/trunk/toolbox/",
                 }
                 
-    createlibraries(rootrepo, libraries, remoterepos=remoterepos)
+    createlibraries(rootrepo, libraries)
             
         
