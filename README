@@ -43,7 +43,7 @@ git-cherry-sort.sh:
 
 * Relative externals won't be parsed properly (yet)
 * convert-to-git.py does not support externs that reference SVN repos on other hosts (yet)
-* For performance and network bandwidth reasons, you should get a local mirror of your SVN repository and export from that instead of from the remote repository over the network.
+* For performance and network bandwidth reasons, you should get a local mirror of your SVN repository and export from that instead of from the remote repository over the network. See "svnclone.sh" for an example of how to clone an svn repository locally.
 * For performance reasons, you should run this script on a filesystem that supports timestamp granularity of less than 1 second. When svn performs an "svn checkout" or "svn export", apparently it waits for the system to generate a unique timestamp. I recommend an ext4 filesystem, the default for newer linux distributions.
 
 -- References --
@@ -52,5 +52,6 @@ externals definition: http://svnbook.red-bean.com/en/1.7/svn.advanced.externals.
 users.txt format: http://git-scm.com/book/en/Git-and-Other-Systems-Migrating-to-Git
 git-filter-branch subdirectory rewrite: http://git-scm.com/docs/git-filter-branch
   The example on this page for moving a whole tree into a subdirectory didn't work on my system because some versions of bash don't seem to support inline bash variable assignment.
+svn local mirror: http://cournape.wordpress.com/2007/12/18/making-a-local-mirror-of-a-subversion-repository-using-svnsync/
 
 See LICENSE for more information on copying and redistributing these tools.
