@@ -524,12 +524,12 @@ if os.path.exists('.git/info/progress'):
     startrevnum = 0
     with open('.git/info/progress', 'r') as gitprogress:
         startrevnum = int(gitprogress.read())
-    lastrev = getLastRevision(repo)
+    lastrev = getLastRevision(rootrepo)
     revnumbers = xrange(startrevnum, lastrev.number + 1)
     print "-- Continuing from rev %d to rev %d --" % (startrevnum ,lastrev.number)
 else:
     firstrev = getFirstRevision(repo)
-    lastrev = getLastRevision(repo)
+    lastrev = getLastRevision(rootrepo)
     revnumbers = xrange(firstrev.number, lastrev.number + 1)
     print "-- Starting from scratch from rev %d to rev %d --" % (firstrev.number, lastrev.number)
 
