@@ -21,8 +21,7 @@ def createlibraries(    rootrepo,
                         gitfilterprefix=None,
                         gitcherrysort=None,
                         gitusers=None,
-                        converttogit=None
-                    )
+                        converttogit=None ):
     if not gitfilterprefix:
         gitfilterprefix = os.path.abspath('git-filter-prefix.sh')
     if not gitcherrysort:
@@ -96,9 +95,6 @@ def createlibraries(    rootrepo,
     retval = call(gitcherrysort)
     if retval != 0:
         raise RuntimeError("git-cherry-sort error")
-    retval = call("git filter-branch -f --env-filter 'GIT_COMMITTER_DATE=$GIT_AUTHOR_DATE; export GIT_COMMITTER_DATE'")
-    if retval != 0:
-        raise RuntimeError("git-filter-branch error")
         
 if __name__ == '__main__':
     rootrepo = "file:///home/chrisknyfe/migration/localsvn"
