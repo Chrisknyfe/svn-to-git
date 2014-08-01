@@ -23,13 +23,13 @@ def createlibraries(    rootrepo,
                         gitusers=None,
                         converttogit=None ):
     if not gitfilterprefix:
-        gitfilterprefix = os.path.abspath('git-filter-prefix.sh')
+        gitfilterprefix = os.path.abspath('git_filter_prefix.sh')
     if not gitcherrysort:
-        gitcherrysort = os.path.abspath('git-cherry-sort.sh')
+        gitcherrysort = os.path.abspath('git_cherry_sort.sh')
     if not gitusers:
         gitusers = os.path.abspath('gitusers.txt')
     if not converttogit:
-        converttogit = os.path.abspath('convert-to-git.py')
+        converttogit = os.path.abspath('convert_to_git.py')
 
     # Make a subfolder to contain all these wild shenanigans
     if not os.path.exists('libraries_build'):
@@ -50,7 +50,7 @@ def createlibraries(    rootrepo,
         cmdstr += " %s" % dirname
         retval = call(cmdstr)
         if retval != 0:
-            raise RuntimeError("convert-to-git error")
+            raise RuntimeError("convert_to_git error")
             
         # Copy the exported library somewhere else to be filtered.
         if os.path.exists(outputdirname):
@@ -62,7 +62,7 @@ def createlibraries(    rootrepo,
         os.chdir(outputdirname)
         retval = call("%s %s" % (gitfilterprefix, modname))
         if retval != 0:
-            raise RuntimeError("git-filter-prefix error")
+            raise RuntimeError("git_filter_prefix error")
             
             
     # Make a "libraries" git repo that we'll fill with these libraries
@@ -94,7 +94,7 @@ def createlibraries(    rootrepo,
     os.chdir(librariesrepo)
     retval = call(gitcherrysort)
     if retval != 0:
-        raise RuntimeError("git-cherry-sort error")
+        raise RuntimeError("git_cherry_sort error")
         
 if __name__ == '__main__':
     rootrepo = "file:///home/chrisknyfe/migration/localsvn"

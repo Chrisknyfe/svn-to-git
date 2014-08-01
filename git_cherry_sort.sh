@@ -6,7 +6,7 @@ git checkout --orphan new-master
 git reset --hard
 touch .gitignore
 git add .gitignore
-git commit -m "Creating the interleaved repo (beginning of git-cherry-sort)"
+git commit -m "Creating the interleaved repo (beginning of git_cherry_sort)"
 
 # Bring changes from old master into this one, but sorted and cherry-picked.
 git log --oneline --reverse old-master | awk '{ print $1 }' | xargs -L1 git cherry-pick
