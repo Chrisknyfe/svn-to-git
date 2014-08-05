@@ -508,7 +508,6 @@ print "-- Converting %s to %s --" % (repo, targetdir)
 if not os.path.exists(targetdir):
     os.mkdir(targetdir)
 os.chdir(targetdir)
-
 if not os.path.exists('.git'): 
     call("git init", printcommand=False)
     with open(".git/info/exclude", 'a') as gitignore:
@@ -549,9 +548,9 @@ else:
 # revision 5094, specified '-r REV URL@PEGREV' extern form
 # revision 9000, sensor_stream has a file extern "vc_queue.h" # handled
 
-#testpoint = 9000
+#testpoint = 9700
 #revnumbers = xrange(testpoint, lastrev.number)
-#revnumbers = xrange(testpoint, testpoint+400)
+#revnumbers = xrange(testpoint, testpoint+11)
 
 deleteAllSvnContentInCwd()
 for revnum in revnumbers:
@@ -589,13 +588,34 @@ for revnum in revnumbers:
         if exportexternals:
             updateExternalsTo(rev.number)
 
-        text, errtext = readcall("git add -u", printcommand=False, printstdout=False, printstderr=False)
-        text, errtext = readcall("git add --all .", printcommand=False, printstdout=False, printstderr=False)
-        with open(".commitmessage", 'w') as commitmessage:
+        # Add everything. New files, modifications, deletions.
+        text, errtext = readcall("git add -f -u .", printcommand=False, printstdout=False, printstderr=False)
+        text, errtext = readcall("git add -f --all .", printcommand=False, printstdout=False, printstderr=False)
+        
+        
+        # Remove all .svn directories from the cache
+        text, errtext = readcall(" git ls-files -i --exclude '**/.svn/wc.db' ", printcommand=False, printstdout=False, printstderr=False)
+        svndirs = set()
+        for line in text.splitlines():
+            match = re.search(r'^(.*\.svn)/', line)
+            if match:
+                svndirs.add(match.group(1))
+        svndirs = list(svndirs)            
+        while svndirs:
+            cmd = "git rm --cached -r"
+            dirsperline = 10
+            while svndirs and dirsperline > 0:
+                cmd += " \"%s\"" % svndirs.pop()
+                dirsperline -= 1
+            
+            text, errtext = readcall(cmd, printcommand=False, printstdout=False, printstderr=False)
+        
+        
+        with open(".git/info/commitmessage", 'w') as commitmessage:
             commitmessage.write("%s\n\nExported from rev %d %s" % (rev.log, rev.number, repo))
             
         try:
-            text, errtext = readcall('git commit --author="%s" --date="%s" --file=.commitmessage' % (rev.user, rev.date), printcommand=False, printstdout=False, printstderr=False)
+            text, errtext = readcall('git commit --author="%s" --date="%s" --file=.git/info/commitmessage' % (rev.user, rev.date), printcommand=False, printstdout=False, printstderr=False)
             print text
             print >> sys.stderr, errtext
         except CalledProcessError as e:
@@ -604,7 +624,7 @@ for revnum in revnumbers:
             else:
                 raise
         
-        os.remove(".commitmessage")
+        os.remove(".git/info/commitmessage")
 
     with open(".git/info/progress", 'w') as gitprogress:
         gitprogress.write(str(rev.number))
@@ -613,4 +633,5 @@ print "-- Correcting commit datestamps --"
 call("git filter-branch -f --env-filter 'GIT_COMMITTER_DATE=$GIT_AUTHOR_DATE; export GIT_COMMITTER_DATE'", printcommand=False)
 
 print "-- Completed conversion from SVN repo to flattened GIT repo --\n"
+
 
