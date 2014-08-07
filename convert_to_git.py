@@ -537,21 +537,6 @@ else:
 # replay every svn revision on the new git repo
 #
 
-# BCS!
-# revision 106, Pain was renamed to BandageCommServer # just a file move, handled
-# revision 110, project pain was moved to /trunk/src/BandageCommServer # handled
-# revision 1578, extern/crc is added. # handled
-# revision 2852, extern/crc is removed. # handled
-# revision 3126, BandageCommServer can't be found. WTF? It's there!
-# revision 3384, BandageCommServer was removed.
-# revision 3385, BandageCommServer was brought back. # need to fix tree conflict here
-# revision 5094, specified '-r REV URL@PEGREV' extern form
-# revision 9000, sensor_stream has a file extern "vc_queue.h" # handled
-
-#testpoint = 9700
-#revnumbers = xrange(testpoint, lastrev.number)
-#revnumbers = xrange(testpoint, testpoint+11)
-
 deleteAllSvnContentInCwd()
 for revnum in revnumbers:
     print "-- Replaying revision %d --" % revnum
