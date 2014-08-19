@@ -15,7 +15,9 @@ Tools for exporting an SVN project to GIT
   
 ####Example usage:
 ```  
-  python convert-to-git.py --root file:///home/chrisknyfe/localsvnrepo --repo /path/to/subproject \
+  python convert-to-git.py \
+  --root file:///home/chrisknyfe/localsvnrepo \
+  --repo /path/to/subproject \
   --users users.txt export_dir
 ```
   
