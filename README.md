@@ -4,9 +4,9 @@ Tools for exporting an SVN project to GIT
 
 ## Dependencies
 
-Python 2 (only 2 supported for now)
-Subversion 1.5+
-Git 1.X+
+* Python 2 (only 2 supported for now)
+* Subversion 1.5+
+* Git 1.X+
 
 ## Overview
 
@@ -14,9 +14,10 @@ Git 1.X+
   Converts an SVN repository into a Git project, merging in the history of all externals as if they had been developed inside the parent project itself. If your SVN project has a lot of externals, this script will "flatten" the project for you. 
   
 ####Example usage:
-  
+```  
   python convert-to-git.py --root file:///home/chrisknyfe/localsvnrepo --repo /path/to/subproject \
   --users users.txt export_dir
+```
   
   This will export changes from the project at file:///home/chrisknyfe/localsvnrepo/path/to/subproject and commit them to a local git project in export_dir. The history that will be exported from the svn repo follows the history of the object at the path /path/to/subproject at the latest revision. The object may have been moved many times, but this script will still get the history of the object as it was at those other locations. 
   
@@ -24,7 +25,9 @@ Git 1.X+
   Rewrites the history of the current git project as if it had been developed in a subdirectory.
   
 ####Example usage:
+```
   bash git-filter-prefix.sh prefix/path
+```
   
   If your git repository has a README, that file will now exist at prefix/path/README for the entire history of the project.
   
@@ -32,7 +35,9 @@ Git 1.X+
   Sort the commits in the master branch of the current git project by date, flattening their history into one linear history. 
   
 ####Usage:
+```
   bash git-cherry-sort.sh
+```
   
   Useful if you created a git project by pulling history from many other git projects. All the history is there, but if you try to checkout a commit that originated from one of the git projects you pulled, you won't be able to see the content from any of the other git projects.
   
