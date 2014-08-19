@@ -495,7 +495,7 @@ if checkancestry:
         
         # Print info for relevant changes
         if printInfo:
-            call("svn log -r %d %s" % (revnum, rootrepo), printcommand=False)
+            text, errtext = readcall("svn log -r %d %s" % (revnum, rootrepo), printcommand=False, printstdout=True, printstderr=False)
     exit()
 
 print "-- Converting %s to %s --" % (repo, targetdir)
@@ -508,7 +508,6 @@ print "-- Converting %s to %s --" % (repo, targetdir)
 if not os.path.exists(targetdir):
     os.mkdir(targetdir)
 os.chdir(targetdir)
-
 if not os.path.exists('.git'): 
     call("git init", printcommand=False)
     with open(".git/info/exclude", 'a') as gitignore:
@@ -524,12 +523,12 @@ if os.path.exists('.git/info/progress'):
     startrevnum = 0
     with open('.git/info/progress', 'r') as gitprogress:
         startrevnum = int(gitprogress.read())
-    lastrev = getLastRevision(repo)
+    lastrev = getLastRevision(rootrepo)
     revnumbers = xrange(startrevnum, lastrev.number + 1)
     print "-- Continuing from rev %d to rev %d --" % (startrevnum ,lastrev.number)
 else:
     firstrev = getFirstRevision(repo)
-    lastrev = getLastRevision(repo)
+    lastrev = getLastRevision(rootrepo)
     revnumbers = xrange(firstrev.number, lastrev.number + 1)
     print "-- Starting from scratch from rev %d to rev %d --" % (firstrev.number, lastrev.number)
 
@@ -537,21 +536,6 @@ else:
 #
 # replay every svn revision on the new git repo
 #
-
-# BCS!
-# revision 106, Pain was renamed to BandageCommServer # just a file move, handled
-# revision 110, project pain was moved to /trunk/src/BandageCommServer # handled
-# revision 1578, extern/crc is added. # handled
-# revision 2852, extern/crc is removed. # handled
-# revision 3126, BandageCommServer can't be found. WTF? It's there!
-# revision 3384, BandageCommServer was removed.
-# revision 3385, BandageCommServer was brought back. # need to fix tree conflict here
-# revision 5094, specified '-r REV URL@PEGREV' extern form
-# revision 9000, sensor_stream has a file extern "vc_queue.h" # handled
-
-#testpoint = 9000
-#revnumbers = xrange(testpoint, lastrev.number)
-#revnumbers = xrange(testpoint, testpoint+400)
 
 deleteAllSvnContentInCwd()
 for revnum in revnumbers:
@@ -589,13 +573,34 @@ for revnum in revnumbers:
         if exportexternals:
             updateExternalsTo(rev.number)
 
-        text, errtext = readcall("git add -u", printcommand=False, printstdout=False, printstderr=False)
-        text, errtext = readcall("git add --all .", printcommand=False, printstdout=False, printstderr=False)
-        with open(".commitmessage", 'w') as commitmessage:
+        # Add everything. New files, modifications, deletions.
+        text, errtext = readcall("git add -f -u .", printcommand=False, printstdout=False, printstderr=False)
+        text, errtext = readcall("git add -f --all .", printcommand=False, printstdout=False, printstderr=False)
+        
+        
+        # Remove all .svn directories from the cache
+        text, errtext = readcall(" git ls-files -i --exclude '**/.svn/wc.db' ", printcommand=False, printstdout=False, printstderr=False)
+        svndirs = set()
+        for line in text.splitlines():
+            match = re.search(r'^(.*\.svn)/', line)
+            if match:
+                svndirs.add(match.group(1))
+        svndirs = list(svndirs)            
+        while svndirs:
+            cmd = "git rm --cached -r"
+            dirsperline = 10
+            while svndirs and dirsperline > 0:
+                cmd += " \"%s\"" % svndirs.pop()
+                dirsperline -= 1
+            
+            text, errtext = readcall(cmd, printcommand=False, printstdout=False, printstderr=False)
+        
+        
+        with open(".git/info/commitmessage", 'w') as commitmessage:
             commitmessage.write("%s\n\nExported from rev %d %s" % (rev.log, rev.number, repo))
             
         try:
-            text, errtext = readcall('git commit --author="%s" --date="%s" --file=.commitmessage' % (rev.user, rev.date), printcommand=False, printstdout=False, printstderr=False)
+            text, errtext = readcall('git commit --author="%s" --date="%s" --file=.git/info/commitmessage' % (rev.user, rev.date), printcommand=False, printstdout=False, printstderr=False)
             print text
             print >> sys.stderr, errtext
         except CalledProcessError as e:
@@ -604,7 +609,7 @@ for revnum in revnumbers:
             else:
                 raise
         
-        os.remove(".commitmessage")
+        os.remove(".git/info/commitmessage")
 
     with open(".git/info/progress", 'w') as gitprogress:
         gitprogress.write(str(rev.number))
@@ -613,4 +618,5 @@ print "-- Correcting commit datestamps --"
 call("git filter-branch -f --env-filter 'GIT_COMMITTER_DATE=$GIT_AUTHOR_DATE; export GIT_COMMITTER_DATE'", printcommand=False)
 
 print "-- Completed conversion from SVN repo to flattened GIT repo --\n"
+
 
