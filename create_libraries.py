@@ -16,6 +16,7 @@ def readcall(cmd):
 
 def createlibraries(    rootrepo,
                         libraries,
+                        targetdir='libraries_build',
                         remoterepos=[],
                         gitfilterprefix=None,
                         gitcherrysort=None,
@@ -31,9 +32,9 @@ def createlibraries(    rootrepo,
         converttogit = os.path.abspath('convert_to_git.py')
 
     # Make a subfolder to contain all these wild shenanigans
-    if not os.path.exists('libraries_build'):
-        os.mkdir('libraries_build')
-    os.chdir('libraries_build')
+    if not os.path.exists(targetdir):
+        os.mkdir(targetdir)
+    os.chdir(targetdir)
     rootleveldir = os.getcwd()
 
     for modname, url in libraries.iteritems():
@@ -65,6 +66,7 @@ def createlibraries(    rootrepo,
             
             
     # Make a "libraries" git repo that we'll fill with these libraries
+    os.chdir(rootleveldir)
     print "\n-- Creating \"libraries\" repo --\n"
     librariesrepo = os.path.abspath('libraries') 
     if os.path.exists(librariesrepo):
