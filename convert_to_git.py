@@ -376,7 +376,8 @@ def didExternalsChange(revnum):
         text, errtext = readcall("svn diff -c %d %s" % (revnum, rootrepo), timeout=10, printcommand=False, printstdout=False, printstderr=False)
     except TimeoutException:
         return True
-    if text.find("Modified: svn:externals") != -1:
+    if text.find(": svn:externals") != -1:
+        # found "Modified: svn:externals or "Added: svn:externals"
         return True
     else:
         return False
