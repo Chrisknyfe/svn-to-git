@@ -448,6 +448,29 @@ def deleteAllSvnContentInCwd():
         if not item in ['.git']:
             call("rm -fr %s" % item)
             
+def updateProjectRootTo(rev):
+    ignoreThisChange = False
+    try:
+        if os.path.exists('.svn'):
+            text, errtext = readcall("svn switch --ignore-externals --accept theirs-full -r %d %s" % (rev.number, repo), printcommand=False, printstdout=False, printstderr=False)
+            if not text.strip().startswith("At revision"):
+                print text
+                print >> sys.stderr, errtext
+        else:
+            text, errtext = readcall('svn co --ignore-externals -r %d %s .' % (rev.number, repo), printcommand=False, printstdout=True)
+    except CalledProcessError as e:
+        if e.stderr.find("Unable to find repository location") != -1:
+            print "WARNING: Operative-revision ancestry has a gap here (probably caused by branching from a past revision.) Ignoring this commit."
+            ignoreThisChange = True
+        elif e.stderr.find("Tree conflict can only be resolved") != -1:
+            print "WARNING: Tree conflict occurred. I don't understand why this happens. Wiping contents and trying again."
+            deleteAllSvnContentInCwd()
+            ignoreThisChange = updateProjectRootTo(rev)
+        else:
+            raise
+    return ignoreThisChange
+
+            
 #============================================================#
 
 #
@@ -544,6 +567,7 @@ else:
 # replay every svn revision on the new git repo
 #
 
+
 deleteAllSvnContentInCwd()
 for revnum in revnumbers:
     print "-- Replaying revision %d --" % revnum
@@ -558,23 +582,7 @@ for revnum in revnumbers:
         print "WARNING: Externals changed, nuking the entire repo."
         deleteAllSvnContentInCwd()
 
-    # Update project root to revision
-    try:
-        if os.path.exists('.svn'):
-            text, errtext = readcall("svn switch --ignore-externals --accept theirs-full -r %d %s" % (rev.number, repo), printcommand=False, printstdout=False, printstderr=False)
-            if not text.strip().startswith("At revision"):
-                print text
-                print >> sys.stderr, errtext
-        else:
-            text, errtext = readcall('svn co --ignore-externals -r %d %s .' % (rev.number, repo), printcommand=False, printstdout=True)
-            
-        
-    except CalledProcessError as e:
-        if e.stderr.find("Unable to find repository location") != -1:
-            print "WARNING: Operative-revision ancestry has a gap here (probably caused by branching from a past revision.) Ignoring this commit."
-            ignoreThisChange = True
-        else:
-            raise
+    ignoreThisChange = updateProjectRootTo(rev)
     
     if not ignoreThisChange:
         if exportexternals:
@@ -586,7 +594,7 @@ for revnum in revnumbers:
         
         
         # Remove all .svn directories from the cache
-        text, errtext = readcall(" git ls-files -i --exclude '**/.svn/wc.db' ", printcommand=False, printstdout=False, printstderr=False)
+        text, errtext = readcall("git ls-files -i --exclude '**/.svn/wc.db' ", printcommand=False, printstdout=False, printstderr=False)
         svndirs = set()
         for line in text.splitlines():
             match = re.search(r'^(.*\.svn)/', line)
