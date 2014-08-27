@@ -431,7 +431,7 @@ def updateExternalsTo(revnum):
                 
                 # Make the object's directory if it doesn't exist, otherwise 'svn export' will throw an error.
                 objectdir = os.path.dirname(ex.object)
-                if not os.path.exists(objectdir):
+                if objectdir and not os.path.exists(objectdir):
                     os.makedirs(objectdir)
                     
                 text, errtext = readcall("svn export -r %d %s@%d %s" % (ex.rev, ex.url, ex.pegrev, ex.object), printcommand=False, printstdout=False, printstderr=False)
